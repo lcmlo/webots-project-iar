@@ -18,7 +18,7 @@ MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 60  # Simulated seconds per individual
 RANGE = 2
-
+MAX_SPEED = 9 
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -32,8 +32,9 @@ def random_position(min_radius, max_radius, z):
     return (x, y, z)
 
 class Evolution:
-    def __init__(self, input, hidden, output):
+    def __init__(self, input, hidden, output, controller):
         self.genome_size = 6#(1+input)*hidden+ (hidden+1)*output
+        self.controller = controller
         
         
         self.evaluation_start_time = 0
@@ -89,10 +90,25 @@ class Evolution:
         
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
-        
 
-    def runStep(self, weights):
-        
+    def get_sensor_data(self):
+
+        return {
+            "ground_left":
+                (self.ground_sensors[0].getValue() / 1023 - .6) / .2 > .3,
+
+            "ground_right":
+                (self.ground_sensors[1].getValue() / 1023 - .6) / .2 > .3,
+
+            "prox_left": self.__ir_0.getValue(),
+            "prox_center": self.__ir_2.getValue(),
+            "prox_right": self.__ir_4.getValue()
+        }
+
+    def runStep(self, controller):
+
+        sensors = self.get_sensor_data()
+
         self.collision = bool(
                 self.__n > 10 and
                 (self.__ir_0.getValue()>4300 or 
@@ -103,16 +119,13 @@ class Evolution:
                 self.__ir_5.getValue()>4300 or
                 self.__ir_6.getValue()>4300)
             )
-        
-        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
-        ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
         #print(f"Ground Sensors: Left={ground_sensor_left}, Right={ground_sensor_right}")
 
-        left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
-        right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
+        left_speed, right_speed = controller.compute_speeds(sensors)
         
-        self.left_motor.setVelocity(max(min(left_speed, 9), -9))
-        self.right_motor.setVelocity(max(min(right_speed, 9), -9))
+        self.left_motor.setVelocity(max(min(left_speed, MAX_SPEED), -MAX_SPEED))
+        self.right_motor.setVelocity(max(min(right_speed, MAX_SPEED), -MAX_SPEED))
+        #print(left_speed, right_speed)
 
         self.supervisor.step(self.timestep)
 
@@ -126,7 +139,9 @@ class Evolution:
     
     def evaluate_individual(self, weights):
         self.reset()
-    
+
+        controller = self.controller(weights)
+
         fitness = 0
         self.collision = False
         self.__n = 0
@@ -136,7 +151,7 @@ class Evolution:
     
         while self.supervisor.getTime() - start_time < EVALUATION_TIME and not self.collision:
             #print(self.timestep)
-            step_fitness = self.runStep(weights)
+            step_fitness = self.runStep(controller)
             fitness += step_fitness
     
         #print(f'Fitness: {fitness}')
@@ -144,8 +159,9 @@ class Evolution:
    
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
+        population = self.create_population()
+
         for generation in range(GENERATIONS):
-            population = self.create_population()
             fitnesses = [self.evaluate_individual(ind) for ind in population]
             best_fitness = max(fitnesses)
             print(f"Generation {generation}: Best Fitness = {best_fitness}")
@@ -210,31 +226,69 @@ class Evolution:
         with open("best_individual.json", "w") as f:
             json.dump(best_individual, f, indent=4)
         
+class BaseController:
+    def compute_speeds(self, sensors):
+        raise NotImplementedError
+        
+class BraitenbergController(BaseController):
+
+    def __init__(self, weights):
+        self.weights = weights
+
+    def compute_speeds(self, sensors):
+        left_ground = sensors["ground_left"]
+        right_ground = sensors["ground_right"]
+
+        left_speed = (
+            left_ground * self.weights[0] +
+            right_ground * self.weights[1] +
+            self.weights[2] 
+        )
+
+        right_speed = (
+            left_ground * self.weights[3] +
+            right_ground * self.weights[4] +
+            self.weights[5]  
+        )
+
+        return left_speed, right_speed       
+        
+class ANNController(BaseController):
+
+    def __init__(self, genome):
+        self.genome = genome
+
+    def compute_speeds(self, sensors):
+        # TODO
+        return left_speed, right_speed
 
 # metodo para carregar o melhor individuo de um ficheiro json e correr a simulação com ele, para ver o comportamento do melhor individuo encontrado
-def test_best_individual():
-    import json
+def test_best_individual(controller_class):
+
     with open("best_individual.json", "r") as f:
         best_individual = json.load(f)
-    
+
     genome = np.array(best_individual["genome"])
     fitness = best_individual["fitness"]
+
     print(f"Testing Best Individual: Fitness = {fitness}")
-    
-    controller = Evolution(2, 0, 2)
-    controller.reset()
-    
-    # Run the simulation with the best individual's genome
+
+    evolution = Evolution(2, 0, 2, controller_class)
+
+    evolution.reset()
+
+    controller = controller_class(genome)
+
     while True:
-        controller.runStep(genome)
+        evolution.runStep(controller)
 
 
 # Main evolutionary loop
 def main():
     # Run the evolutionary algorithm
-    controller = Evolution(2, 0, 2)
-    controller.run()
-    test_best_individual()
+    #controller = Evolution(2, 0, 2, BraitenbergController)
+    #controller.run()
+    test_best_individual(BraitenbergController)
 if __name__ == "__main__":
     main()
 
