@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Webots temporary/autosave files
+*.wbproj
+*.wbo
+*.bak
+*.tmp
+
+# Large/generated outputs
+results/
+logs/
+checkpoints/
+*.csv
+*.npy
+*.npz
