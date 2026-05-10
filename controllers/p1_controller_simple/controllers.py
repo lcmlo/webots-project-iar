@@ -70,7 +70,7 @@ class BraitenbergController(BaseController):
         left_speed = self._clip_speed(left_speed)
         right_speed = self._clip_speed(right_speed)
 
-        return left_speed, 
+        return left_speed, right_speed
 
 
 class SimpleANNController(BaseController):

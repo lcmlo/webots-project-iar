@@ -18,12 +18,12 @@ from controllers import (
 
 TIME_STEP = 5
 
-POPULATION_SIZE = 25
-PARENTS_KEEP = 5
-GENERATIONS = 50
+POPULATION_SIZE = 100
+PARENTS_KEEP = 30
+GENERATIONS = 20
 
 MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.05
+MUTATION_SIZE = 0.03
 
 EVALUATION_TIME = 60  
 
@@ -239,86 +239,7 @@ class Evolution:
         self.prev_position = current_position
         self.__n += 1
 
-        return self.get_step_fitness(sensors, step_distance)
-
-    # ------------------------------------------------------------
-    # Distance
-    # ------------------------------------------------------------
-
-    def calculate_step_distance(self, previous_position, current_position):
-        """
-        Calculates distance travelled in the horizontal plane.
-
-        Important:
-        If your Webots world uses X/Z as the floor plane, keep [0] and [2].
-        If it uses X/Y as the floor plane, change this to [0] and [1].
-        """
-
-        return math.dist(
-            [previous_position[0], previous_position[2]],
-            [current_position[0], current_position[2]],
-        )
-
-    # ------------------------------------------------------------
-    # Fitness
-    # ------------------------------------------------------------
-
-    def get_step_fitness(self, sensors, step_distance):
-        fitness = 0.0
-
-        ground_sensor_left = sensors["ground_left"]
-        ground_sensor_right = sensors["ground_right"]
-
-        on_line_or_path = not ground_sensor_left and not ground_sensor_right
-
-        if on_line_or_path:
-            fitness += 1.0
-            fitness += step_distance * 100.0
-        else:
-            fitness -= 0.05
-
-        if self.collision:
-            fitness -= 10.0
-
-        return fitness
-
-    # ------------------------------------------------------------
-    # Population
-    # ------------------------------------------------------------
-
-    def create_population(self):
-        return [
-            np.random.uniform(-RANGE, RANGE, self.genome_size)
-            for _ in range(POPULATION_SIZE)
-        ]
-
-    # ------------------------------------------------------------
-    # Individual evaluation
-    # ------------------------------------------------------------
-
-    def evaluate_individual(self, genome):
-        self.reset()
-
-        active_controller = self.controller_class(genome)
-
-        fitness = 0.0
-
-        start_time = self.supervisor.getTime()
-
-        while (
-            self.supervisor.getTime() - start_time < EVALUATION_TIME
-            and not self.collision
-        ):
-            step_fitness = self.runStep(active_controller)
-            fitness += step_fitness
-
-        if self.collision:
-            fitness -= 20.0
-
-        return {
-            "fitness": fitness,
-            "distance": self.total_distance,
-        }
+        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed)
 
     # ------------------------------------------------------------
     # Run evolution
@@ -384,6 +305,90 @@ class Evolution:
         print("\nEvolution finished.")
         print(f"Best global fitness: {self.best_global_fitness:.2f}")
         print(f"Best global genome: {self.best_global_genome}")
+
+    # ------------------------------------------------------------
+    # Distance
+    # ------------------------------------------------------------
+
+    def calculate_step_distance(self, previous_position, current_position):
+        """
+        Calculates distance travelled in the horizontal plane.
+
+        Important:
+        If your Webots world uses X/Z as the floor plane, keep [0] and [2].
+        If it uses X/Y as the floor plane, change this to [0] and [1].
+        """
+
+        return math.dist(
+            [previous_position[0], previous_position[2]],
+            [current_position[0], current_position[2]],
+        )
+
+    # ------------------------------------------------------------
+    # Fitness
+    # ------------------------------------------------------------
+
+    def get_step_fitness(
+            self,
+            sensors,
+            step_distance,
+            left_speed,
+            right_speed,
+    ):
+        fitness = 0.0
+        ground_sensor_left = sensors["ground_left"]
+        ground_sensor_right = sensors["ground_right"]
+
+        on_line = not ground_sensor_left and not ground_sensor_right
+
+        motion = (left_speed + right_speed) / 2
+
+        if on_line:
+            fitness += 1.0
+            fitness += step_distance * 5.0
+        else:
+            fitness -= 0.5
+
+        if self.collision:
+            fitness -= 10.0
+
+        fitness += min(motion, 0) * 0.01
+
+        return fitness
+
+    # ------------------------------------------------------------
+    # Population
+    # ------------------------------------------------------------
+
+    def create_population(self):
+        return [
+            np.random.uniform(-RANGE, RANGE, self.genome_size)
+            for _ in range(POPULATION_SIZE)
+        ]
+
+    # ------------------------------------------------------------
+    # Individual evaluation
+    # ------------------------------------------------------------
+
+    def evaluate_individual(self, genome):
+        self.reset()
+
+        active_controller = self.controller_class(genome)
+
+        fitness = 0.0
+
+        start_time = self.supervisor.getTime()
+
+        while self.supervisor.getTime() - start_time < EVALUATION_TIME:
+            step_fitness = self.runStep(active_controller)
+            fitness += step_fitness
+
+        return {
+            "fitness": fitness,
+            "distance": self.total_distance,
+        }
+
+
 
     # ------------------------------------------------------------
     # Next generation
