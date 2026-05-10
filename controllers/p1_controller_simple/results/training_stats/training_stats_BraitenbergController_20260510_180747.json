@@ -1,0 +1,57 @@
+{
+    "config": {
+        "controller": "BraitenbergController",
+        "population_size": 50,
+        "parents_keep": 7,
+        "generations": 5,
+        "mutation_rate": 0.2,
+        "mutation_size": 0.05,
+        "evaluation_time": 60,
+        "range": 5,
+        "max_speed": 9,
+        "seed": 42
+    },
+    "stats": [
+        {
+            "generation": 0,
+            "best_fitness": 365.14665231744027,
+            "avg_fitness": -1134.8049733425062,
+            "best_distance": 0.13105041692626188,
+            "avg_distance": 0.019076452701706246,
+            "global_best_fitness": 365.14665231744027
+        },
+        {
+            "generation": 1,
+            "best_fitness": 402.18225817104235,
+            "avg_fitness": -976.6014965932611,
+            "best_distance": 0.5054251215331115,
+            "avg_distance": 0.07877154035987487,
+            "global_best_fitness": 402.18225817104235
+        },
+        {
+            "generation": 2,
+            "best_fitness": 493.96723199477884,
+            "avg_fitness": -270.42964434164116,
+            "best_distance": 0.13588565262841662,
+            "avg_distance": 0.2293362700204772,
+            "global_best_fitness": 493.96723199477884
+        },
+        {
+            "generation": 3,
+            "best_fitness": 545.306975601987,
+            "avg_fitness": -94.9951874654313,
+            "best_distance": 0.4992556960071876,
+            "avg_distance": 0.1700336938130118,
+            "global_best_fitness": 545.306975601987
+        },
+        {
+            "generation": 4,
+            "best_fitness": 546.2806318665537,
+            "avg_fitness": 274.47806904013976,
+            "best_distance": 0.15059015429735423,
+            "avg_distance": 0.2519164632510366,
+            "global_best_fitness": 546.2806318665537
+        }
+    ],
+    "timestamp": "20260510_180747"
+}

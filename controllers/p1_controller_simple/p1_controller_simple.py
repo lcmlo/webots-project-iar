@@ -4,6 +4,8 @@ import random
 
 import numpy as np
 from controller import Supervisor
+from datetime import datetime
+import os
 
 from controllers import (
     BraitenbergController,
@@ -18,9 +20,9 @@ from controllers import (
 
 TIME_STEP = 5
 
-POPULATION_SIZE = 100
-PARENTS_KEEP = 15
-GENERATIONS = 20
+POPULATION_SIZE = 50
+PARENTS_KEEP = 7
+GENERATIONS = 5
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
@@ -147,6 +149,24 @@ class Evolution:
         self.__n = 0
         self.total_distance = 0.0
         self.prev_position = self.robot_node.getPosition()
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        self.best_individual_filename = (
+            "results/best_individuals/"
+            f"best_individual_"
+            f"{self.controller_class.__name__}_"
+            f"{self.timestamp}.json"
+        )
+
+        self.stats_filename = (
+            "results/training_stats/"
+            f"training_stats_"
+            f"{self.controller_class.__name__}_"
+            f"{self.timestamp}.json"
+        )
+        os.makedirs("results/best_individuals", exist_ok=True)
+        os.makedirs("results/training_stats", exist_ok=True)
+
 
     # ------------------------------------------------------------
     # Reset robot
@@ -487,6 +507,7 @@ class Evolution:
     # ------------------------------------------------------------
 
     def save_best_individual(self, genome, fitness, generation, distance):
+
         best_individual = {
             "controller": self.controller_class.__name__,
             "genome_size": self.genome_size,
@@ -494,9 +515,10 @@ class Evolution:
             "fitness": float(fitness),
             "generation": int(generation),
             "distance": float(distance),
+            "timestamp": self.timestamp,
         }
 
-        with open("best_individual.json", "w") as f:
+        with open(self.best_individual_filename, "w") as f:
             json.dump(best_individual, f, indent=4)
 
     # ------------------------------------------------------------
@@ -504,12 +526,14 @@ class Evolution:
     # ------------------------------------------------------------
 
     def save_stats(self):
-        with open("training_stats.json", "w") as f:
-            data = {
-                "config": self.get_experiment_config(),
-                "stats": self.stats
-            }
 
+        data = {
+            "config": self.get_experiment_config(),
+            "stats": self.stats,
+            "timestamp": self.timestamp,
+        }
+
+        with open(self.stats_filename, "w") as f:
             json.dump(data, f, indent=4)
 
 
@@ -518,7 +542,12 @@ class Evolution:
 # ============================================================
 
 def test_best_individual(controller_class):
-    with open("best_individual.json", "r") as f:
+
+    filename = (
+        f"best_individual_{controller_class.__name__}.json"
+    )
+
+    with open(filename, "r") as f:
         best_individual = json.load(f)
 
     genome = np.array(best_individual["genome"], dtype=float)

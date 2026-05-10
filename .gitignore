@@ -25,7 +25,6 @@ Thumbs.db
 *.tmp
 
 # Large/generated outputs
-results/
 logs/
 checkpoints/
 *.csv
