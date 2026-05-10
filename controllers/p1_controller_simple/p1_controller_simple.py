@@ -7,13 +7,13 @@ import json
 
 # Simulation parameters
 TIME_STEP = 5
-POPULATION_SIZE = 10
-PARENTS_KEEP = 2
+POPULATION_SIZE = 25
+PARENTS_KEEP = 5
 #INPUT = 5
 #HIDDEN = 4
 #OUTPUT = 2
 #GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
-GENERATIONS = 10
+GENERATIONS = 50
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 60  # Simulated seconds per individual
@@ -33,6 +33,7 @@ def random_position(min_radius, max_radius, z):
 
 class Evolution:
     def __init__(self, input, hidden, output, controller):
+        self.stats = []
         self.genome_size = 6#(1+input)*hidden+ (hidden+1)*output
         self.controller = controller
         
@@ -79,6 +80,7 @@ class Evolution:
         self.ground_sensors = [self.supervisor.getDevice(f'prox.ground.{i}') for i in range(2)]
 
         self.__n = 0
+        self.total_distance = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
         
 
@@ -90,6 +92,9 @@ class Evolution:
         
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
+        self.total_distance = 0
+
+
 
     def get_sensor_data(self):
 
@@ -129,6 +134,21 @@ class Evolution:
 
         self.supervisor.step(self.timestep)
 
+        current_position = self.robot_node.getPosition()
+        ground_sensor_left = sensors["ground_left"]
+        ground_sensor_right = sensors["ground_right"]
+
+        step_distance = math.dist(
+            [self.prev_position[0], self.prev_position[2]],
+            [current_position[0], current_position[2]]
+        )
+
+        if not ground_sensor_left and not ground_sensor_right:
+            self.total_distance += step_distance
+
+        self.prev_position = current_position
+        self.__n += 1
+
         return self.get_step_fitness()
 
     def create_population(self):
@@ -155,16 +175,37 @@ class Evolution:
             fitness += step_fitness
     
         #print(f'Fitness: {fitness}')
-        return fitness
+        return {
+            "fitness": fitness,
+            "distance": self.total_distance
+        }
    
     def run(self):
         self.evaluation_start_time = self.supervisor.getTime()
         population = self.create_population()
 
         for generation in range(GENERATIONS):
-            fitnesses = [self.evaluate_individual(ind) for ind in population]
+            results = [self.evaluate_individual(ind) for ind in population]
+
+            fitnesses = [r["fitness"] for r in results]
+            distances = [r["distance"] for r in results]
+
             best_fitness = max(fitnesses)
-            print(f"Generation {generation}: Best Fitness = {best_fitness}")
+            best_distance = max(distances)
+            avg_distance = np.mean(distances)
+            print(
+                f"Generation {generation}: "
+                f"Best Fitness = {best_fitness:.2f}, "
+                f"Best Distance = {best_distance:.2f}, "
+                f"Avg Distance = {avg_distance:.2f}"
+            )
+            self.stats.append({
+                "generation": generation,
+                "best_fitness": float(best_fitness),
+                "avg_fitness": float(np.mean(fitnesses)),
+                "best_distance": float(best_distance),
+                "avg_distance": float(avg_distance)
+            })
             self.save_best_individual(population[np.argmax(fitnesses)], best_fitness)
             # Select parents 
             parents_indices = np.argsort(fitnesses)[-PARENTS_KEEP:]
@@ -177,7 +218,7 @@ class Evolution:
                 child = self.crossover(parent1, parent2)
                 child = self.mutate(child)
                 next_population.append(child)
-            
+            self.save_stats()
             population = next_population
     
 
@@ -225,6 +266,11 @@ class Evolution:
         }
         with open("best_individual.json", "w") as f:
             json.dump(best_individual, f, indent=4)
+
+    def save_stats(self):
+
+        with open("training_stats.json", "w") as f:
+            json.dump(self.stats, f, indent=4)
         
 class BaseController:
     def compute_speeds(self, sensors):
@@ -286,9 +332,9 @@ def test_best_individual(controller_class):
 # Main evolutionary loop
 def main():
     # Run the evolutionary algorithm
-    #controller = Evolution(2, 0, 2, BraitenbergController)
-    #controller.run()
-    test_best_individual(BraitenbergController)
+    controller = Evolution(2, 0, 2, BraitenbergController)
+    controller.run()
+    #test_best_individual(BraitenbergController)
 if __name__ == "__main__":
     main()
 
