@@ -19,16 +19,23 @@ from controllers import (
 TIME_STEP = 5
 
 POPULATION_SIZE = 100
-PARENTS_KEEP = 30
+PARENTS_KEEP = 15
 GENERATIONS = 20
 
 MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.03
+MUTATION_SIZE = 0.05
 
 EVALUATION_TIME = 60  
 
-RANGE = 2
+RANGE = 5
 MAX_SPEED = 9
+
+EARLY_STOPPING = True
+STAGNATION_LIMIT = 10
+MIN_IMPROVEMENT = 0.1
+
+SEED = 42
+# SEED = None
 
 
 # CONTROLLER_CLASS = BraitenbergController
@@ -247,6 +254,7 @@ class Evolution:
 
     def run(self):
         population = self.create_population()
+        stagnation_counter = 0
 
         for generation in range(GENERATIONS):
             results = [
@@ -257,6 +265,7 @@ class Evolution:
             fitnesses = np.array([r["fitness"] for r in results], dtype=float)
             distances = np.array([r["distance"] for r in results], dtype=float)
 
+
             best_index = int(np.argmax(fitnesses))
             best_fitness = float(fitnesses[best_index])
             best_distance = float(distances[best_index])
@@ -265,6 +274,11 @@ class Evolution:
             avg_distance = float(np.mean(distances))
 
             best_genome = population[best_index]
+
+            if best_fitness > self.best_global_fitness + MIN_IMPROVEMENT:
+                stagnation_counter = 0
+            else:
+                stagnation_counter += 1
 
             if best_fitness > self.best_global_fitness:
                 self.best_global_fitness = best_fitness
@@ -296,6 +310,13 @@ class Evolution:
             })
 
             self.save_stats()
+
+            if EARLY_STOPPING and stagnation_counter >= STAGNATION_LIMIT:
+                print(
+                    f"\nEarly stopping triggered after "
+                    f"{STAGNATION_LIMIT} stagnant generations."
+                )
+                break
 
             parents_indices = np.argsort(fitnesses)[-PARENTS_KEEP:]
             parents = [population[i].copy() for i in parents_indices]
@@ -345,14 +366,18 @@ class Evolution:
 
         if on_line:
             fitness += 1.0
-            fitness += step_distance * 5.0
-        else:
-            fitness -= 0.5
+            fitness += step_distance * 3
+        elif not on_line:
+            fitness -= 1.0
+        else: # um sensor na linha o outro nao
+            fitness -= 0.25
 
         if self.collision:
             fitness -= 10.0
 
-        fitness += min(motion, 0) * 0.01
+        if left_speed < 0 and right_speed < 0: #penalizar marcha atras
+            backward_speed = abs(motion)
+            fitness -= backward_speed * 0.02
 
         return fitness
 
@@ -440,6 +465,24 @@ class Evolution:
         return mutated
 
     # ------------------------------------------------------------
+    # Save CONFIG
+    # ------------------------------------------------------------
+    def get_experiment_config(self):
+
+        return {
+            "controller": self.controller_class.__name__,
+            "population_size": POPULATION_SIZE,
+            "parents_keep": PARENTS_KEEP,
+            "generations": GENERATIONS,
+            "mutation_rate": MUTATION_RATE,
+            "mutation_size": MUTATION_SIZE,
+            "evaluation_time": EVALUATION_TIME,
+            "range": RANGE,
+            "max_speed": MAX_SPEED,
+            "seed": SEED,
+        }
+
+    # ------------------------------------------------------------
     # Save best individual
     # ------------------------------------------------------------
 
@@ -462,7 +505,12 @@ class Evolution:
 
     def save_stats(self):
         with open("training_stats.json", "w") as f:
-            json.dump(self.stats, f, indent=4)
+            data = {
+                "config": self.get_experiment_config(),
+                "stats": self.stats
+            }
+
+            json.dump(data, f, indent=4)
 
 
 # ============================================================
@@ -496,6 +544,9 @@ def test_best_individual(controller_class):
 
 def main():
     if MODE == "train":
+        if SEED is not None:
+            np.random.seed(SEED)
+            random.seed(SEED)
         evolution = Evolution(CONTROLLER_CLASS)
         evolution.run()
 
