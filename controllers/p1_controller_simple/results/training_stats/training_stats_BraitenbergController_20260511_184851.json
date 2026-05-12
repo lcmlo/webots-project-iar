@@ -1,0 +1,249 @@
+{
+    "config": {
+        "controller": "BraitenbergController",
+        "population_size": 60,
+        "parents_keep": 10,
+        "generations": 50,
+        "mutation_rate": 0.3,
+        "mutation_size": 0.15,
+        "evaluation_time": 90,
+        "range": 5,
+        "max_speed": 9,
+        "seed": null
+    },
+    "stats": [
+        {
+            "generation": 0,
+            "best_fitness": -528.3281966644414,
+            "avg_fitness": -6129.889938072225,
+            "best_distance": 0.6595128292058879,
+            "avg_distance": 0.025557568602866405,
+            "global_best_fitness": -528.3281966644414
+        },
+        {
+            "generation": 1,
+            "best_fitness": -388.57407928065186,
+            "avg_fitness": -10817.833780499865,
+            "best_distance": 0.7468875212948864,
+            "avg_distance": 0.056804856591211914,
+            "global_best_fitness": -388.57407928065186
+        },
+        {
+            "generation": 2,
+            "best_fitness": -181.53044732324625,
+            "avg_fitness": -9790.613591263786,
+            "best_distance": 0.8766614404918648,
+            "avg_distance": 0.11944447532693953,
+            "global_best_fitness": -181.53044732324625
+        },
+        {
+            "generation": 3,
+            "best_fitness": 230.87236056141305,
+            "avg_fitness": -17483.787237431647,
+            "best_distance": 1.1264475169174017,
+            "avg_distance": 0.6135599745601,
+            "global_best_fitness": 230.87236056141305
+        },
+        {
+            "generation": 4,
+            "best_fitness": 592.4045994619885,
+            "avg_fitness": -3101.4801622066743,
+            "best_distance": 1.3305850667759282,
+            "avg_distance": 0.9674457598568167,
+            "global_best_fitness": 592.4045994619885
+        },
+        {
+            "generation": 5,
+            "best_fitness": 806.0165129822304,
+            "avg_fitness": -5602.7583332102795,
+            "best_distance": 1.4902858612992083,
+            "avg_distance": 1.1711634271001505,
+            "global_best_fitness": 806.0165129822304
+        },
+        {
+            "generation": 6,
+            "best_fitness": 1012.91906059377,
+            "avg_fitness": -24729.692001549818,
+            "best_distance": 1.6404591098272507,
+            "avg_distance": 1.1046726415742174,
+            "global_best_fitness": 1012.91906059377
+        },
+        {
+            "generation": 7,
+            "best_fitness": 1118.7325611824097,
+            "avg_fitness": -23898.20236822169,
+            "best_distance": 1.719770181777782,
+            "avg_distance": 1.1689441794099762,
+            "global_best_fitness": 1118.7325611824097
+        },
+        {
+            "generation": 8,
+            "best_fitness": 1288.689243646596,
+            "avg_fitness": -44575.1861158014,
+            "best_distance": 1.8384269774611768,
+            "avg_distance": 1.0853424978779695,
+            "global_best_fitness": 1288.689243646596
+        },
+        {
+            "generation": 9,
+            "best_fitness": 1593.955864282965,
+            "avg_fitness": -51520.01313095017,
+            "best_distance": 2.06562362651572,
+            "avg_distance": 1.1092300425520114,
+            "global_best_fitness": 1593.955864282965
+        },
+        {
+            "generation": 10,
+            "best_fitness": 1583.5922011862367,
+            "avg_fitness": -95606.1069322241,
+            "best_distance": 2.0542020084418686,
+            "avg_distance": 0.8671830382049036,
+            "global_best_fitness": 1593.955864282965
+        },
+        {
+            "generation": 11,
+            "best_fitness": 1443.3573704692792,
+            "avg_fitness": -125568.79576148762,
+            "best_distance": 1.9648909299882278,
+            "avg_distance": 0.6452445464992551,
+            "global_best_fitness": 1593.955864282965
+        },
+        {
+            "generation": 12,
+            "best_fitness": 1595.3077168465136,
+            "avg_fitness": -120258.40154475163,
+            "best_distance": 2.080794552966289,
+            "avg_distance": 0.6827566327107827,
+            "global_best_fitness": 1595.3077168465136
+        },
+        {
+            "generation": 13,
+            "best_fitness": 1664.0310311926173,
+            "avg_fitness": -95952.1627848991,
+            "best_distance": 2.130245345117855,
+            "avg_distance": 0.9124200190093006,
+            "global_best_fitness": 1664.0310311926173
+        },
+        {
+            "generation": 14,
+            "best_fitness": 1693.2477492208423,
+            "avg_fitness": -128633.17114903631,
+            "best_distance": 2.1563205952141633,
+            "avg_distance": 0.6506942178390706,
+            "global_best_fitness": 1693.2477492208423
+        },
+        {
+            "generation": 15,
+            "best_fitness": 1725.926723845736,
+            "avg_fitness": -110557.85970736276,
+            "best_distance": 2.181548971315288,
+            "avg_distance": 0.8153265027094629,
+            "global_best_fitness": 1725.926723845736
+        },
+        {
+            "generation": 16,
+            "best_fitness": 1614.667026869053,
+            "avg_fitness": -121205.07005578281,
+            "best_distance": 2.112136002259215,
+            "avg_distance": 0.7512736558507697,
+            "global_best_fitness": 1725.926723845736
+        },
+        {
+            "generation": 17,
+            "best_fitness": 1755.7039754804362,
+            "avg_fitness": -123112.64749284585,
+            "best_distance": 2.2247387293282914,
+            "avg_distance": 0.7549270752218568,
+            "global_best_fitness": 1755.7039754804362
+        },
+        {
+            "generation": 18,
+            "best_fitness": 1861.106180498099,
+            "avg_fitness": -119377.04788562452,
+            "best_distance": 2.2768382627178085,
+            "avg_distance": 0.733740740001054,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 19,
+            "best_fitness": 1705.6319927666195,
+            "avg_fitness": -141548.7558238463,
+            "best_distance": 2.16079057753949,
+            "avg_distance": 0.5437857082113834,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 20,
+            "best_fitness": 1668.178449085377,
+            "avg_fitness": -121814.98949453168,
+            "best_distance": 2.1466263055249133,
+            "avg_distance": 0.7469825154606818,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 21,
+            "best_fitness": 1797.432840689618,
+            "avg_fitness": -100793.69107659337,
+            "best_distance": 2.2547390625663826,
+            "avg_distance": 0.9115199019937859,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 22,
+            "best_fitness": 1732.73483343381,
+            "avg_fitness": -139452.47285691494,
+            "best_distance": 2.1725659054635154,
+            "avg_distance": 0.5831119152589695,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 23,
+            "best_fitness": 1602.6624636092133,
+            "avg_fitness": -124509.32144395233,
+            "best_distance": 2.096725885393029,
+            "avg_distance": 0.6471825049842429,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 24,
+            "best_fitness": 1614.0213232283427,
+            "avg_fitness": -121674.24531439721,
+            "best_distance": 2.1055848292135675,
+            "avg_distance": 0.7004889884299774,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 25,
+            "best_fitness": 1666.0368718096267,
+            "avg_fitness": -128667.85199866367,
+            "best_distance": 2.146319120839605,
+            "avg_distance": 0.6317686982040116,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 26,
+            "best_fitness": 1779.9879751827932,
+            "avg_fitness": -139469.78132529077,
+            "best_distance": 2.2362891278218417,
+            "avg_distance": 0.5417995657129514,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 27,
+            "best_fitness": 1660.9506269618016,
+            "avg_fitness": -110491.50382175395,
+            "best_distance": 2.1598527239785503,
+            "avg_distance": 0.7844162364048707,
+            "global_best_fitness": 1861.106180498099
+        },
+        {
+            "generation": 28,
+            "best_fitness": 1842.8962047537825,
+            "avg_fitness": -119371.09436724495,
+            "best_distance": 2.2812865515371823,
+            "avg_distance": 0.7523267840924674,
+            "global_best_fitness": 1861.106180498099
+        }
+    ],
+    "timestamp": "20260511_184851"
+}
