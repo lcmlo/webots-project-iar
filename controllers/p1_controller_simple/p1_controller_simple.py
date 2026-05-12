@@ -36,14 +36,12 @@ EARLY_STOPPING = True
 STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT = 0.1
 
-# SEED = 42 TODO implementar usar a seed para posicionar o robot no arranque
-# tambem convem gerar uma posicao inicial mas dentro do cinzento dentro do circuito 
-SEED = None
+SEED = random.randint(0, 1_000_000)
+#SEED = None
 
 
 CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-#CONTROLLER_CLASS = BraitenbergController
 # CONTROLLER_CLASS = AdvancedANNController
 
 
@@ -55,17 +53,28 @@ MODE = "train"
 # Utility functions
 # ============================================================
 
-def random_orientation():
-    angle = np.random.uniform(0, 2 * np.pi)
+def random_orientation(rng):
+    angle = rng.uniform(0, 2 * np.pi)
+
+    # rodar no plano da arena (eixo Z)
     return [0, 0, 1, angle]
 
 
-def random_position(min_radius, max_radius, z):
-    radius = np.random.uniform(min_radius, max_radius)
-    angle = np.random.uniform(0, 2 * np.pi)
+def random_position(rng):
 
-    x = radius * np.cos(angle)
-    y = radius * np.sin(angle)
+    spawn_margin = 0.5 # quanto maior o valor menor a area de spawn e
+
+    min_x = -1.2 + spawn_margin
+    max_x = 1.2 - spawn_margin
+
+    min_y = -1.2 + spawn_margin
+    max_y = 1.2 - spawn_margin
+
+    x = rng.uniform(min_x, max_x)
+    y = rng.uniform(min_y, max_y)
+
+    # pequena altura acima do chão
+    z = 0.02
 
     return [x, y, z]
 
@@ -151,6 +160,7 @@ class Evolution:
         self.total_distance = 0.0
         self.prev_position = self.robot_node.getPosition()
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.spawn_rng = np.random.default_rng(SEED)
 
         self.best_individual_filename = (
             "results/best_individuals/"
@@ -174,11 +184,13 @@ class Evolution:
     # ------------------------------------------------------------
 
     def reset(self):
-        random_rotation = random_orientation()
+        random_rotation = random_orientation(self.spawn_rng)
+        random_translation = random_position(self.spawn_rng)
 
         self.rotation_field.setSFRotation(random_rotation)
+        self.translation_field.setSFVec3f(random_translation)
 
-        self.translation_field.setSFVec3f([0, 0, 0])
+        self.robot_node.resetPhysics()
 
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
@@ -187,7 +199,6 @@ class Evolution:
         self.__n = 0
         self.total_distance = 0.0
 
-        self.supervisor.simulationResetPhysics()
         self.supervisor.step(self.timestep)
 
         self.prev_position = self.robot_node.getPosition()
@@ -362,8 +373,8 @@ class Evolution:
         """
 
         return math.dist(
-            [previous_position[0], previous_position[2]],
-            [current_position[0], current_position[2]],
+            [previous_position[0], previous_position[1]],
+            [current_position[0], current_position[1]],
         )
 
     # ------------------------------------------------------------
@@ -558,24 +569,50 @@ class Evolution:
 # Test best individual
 # ============================================================
 
-def test_best_individual(controller_class): # TODO ir buscar o ficheiro mais recente
+def test_best_individual(controller_class):
 
-    filename = (
-        f"best_individual_{controller_class.__name__}.json"
+    folder = "results/best_individuals"
+
+    matching_files = [
+        f for f in os.listdir(folder)
+        if (
+            controller_class.__name__ in f and
+            f.endswith(".json")
+        )
+    ]
+
+    if not matching_files:
+        raise FileNotFoundError(
+            f"No saved individuals found for "
+            f"{controller_class.__name__}"
+        )
+
+    latest_file = max(
+        matching_files,
+        key=lambda f: os.path.getmtime(
+            os.path.join(folder, f)
+        )
     )
 
-    with open(filename, "r") as f:
+    filepath = os.path.join(folder, latest_file)
+
+    with open(filepath, "r") as f:
         best_individual = json.load(f)
 
-    genome = np.array(best_individual["genome"], dtype=float)
+    genome = np.array(
+        best_individual["genome"],
+        dtype=float
+    )
+
     fitness = best_individual["fitness"]
 
-    print(f"Testing best individual")
+    print(f"\nTesting latest best individual")
+    print(f"File: {latest_file}")
     print(f"Controller: {controller_class.__name__}")
-    print(f"Fitness: {fitness}")
-    print(f"Genome: {genome}")
+    print(f"Fitness: {fitness:.2f}")
 
     evolution = Evolution(controller_class)
+
     evolution.reset()
 
     active_controller = controller_class(genome)
@@ -590,9 +627,6 @@ def test_best_individual(controller_class): # TODO ir buscar o ficheiro mais rec
 
 def main():
     if MODE == "train":
-        if SEED is not None:
-            np.random.seed(SEED)
-            random.seed(SEED)
         evolution = Evolution(CONTROLLER_CLASS)
         evolution.run()
 
