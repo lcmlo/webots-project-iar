@@ -18,16 +18,16 @@ from controllers import (
 # Simulation / Evolution parameters
 # ============================================================
 
-TIME_STEP = 5
+TIME_STEP = 6
 
 POPULATION_SIZE = 50
-PARENTS_KEEP = 7
-GENERATIONS = 5
+PARENTS_KEEP = 5
+GENERATIONS = 20
 
 MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.05
+MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 60  
+EVALUATION_TIME = 300  
 
 RANGE = 5
 MAX_SPEED = 9
@@ -36,13 +36,14 @@ EARLY_STOPPING = True
 STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT = 0.1
 
-SEED = 42
-# SEED = None
+# SEED = 42 TODO implementar usar a seed para posicionar o robot no arranque
+# tambem convem gerar uma posicao inicial mas dentro do cinzento dentro do circuito 
+SEED = None
 
 
-# CONTROLLER_CLASS = BraitenbergController
-# CONTROLLER_CLASS = SimpleANNController
 CONTROLLER_CLASS = BraitenbergController
+#CONTROLLER_CLASS = SimpleANNController
+#CONTROLLER_CLASS = BraitenbergController
 # CONTROLLER_CLASS = AdvancedANNController
 
 
@@ -370,35 +371,51 @@ class Evolution:
     # ------------------------------------------------------------
 
     def get_step_fitness(
-            self,
-            sensors,
-            step_distance,
-            left_speed,
-            right_speed,
+        self,
+        sensors,
+        step_distance,
+        left_speed,
+        right_speed,
     ):
         fitness = 0.0
+    
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
-
-        on_line = not ground_sensor_left and not ground_sensor_right
-
-        motion = (left_speed + right_speed) / 2
-
+    
+        on_line = (
+            not ground_sensor_left and
+            not ground_sensor_right
+        )
+    
+        motion = (left_speed + right_speed) / 2.0
+        normalized_motion = motion / MAX_SPEED
+    
+        # =========================================================
+        # Recompensa principal:
+        # distancia percorrida na linha
+        # =========================================================
+        # dar pontos por estar na linha
+        # nao permitir estar parado ou frente e tras
         if on_line:
-            fitness += 1.0
-            fitness += step_distance * 3
-        elif not on_line:
+            fitness += step_distance * 1000.0
+    
+        else:
             fitness -= 1.0
-        else: # um sensor na linha o outro nao
-            fitness -= 0.25
-
+    
+        # =========================================================
+        # Penalizar marcha atras
+        # =========================================================
+    
+        if left_speed < 0 and right_speed < 0:
+            fitness -= abs(normalized_motion) * 2.0
+    
+        # =========================================================
+        # Penalizar colisoes fortemente
+        # =========================================================
+    
         if self.collision:
             fitness -= 10.0
-
-        if left_speed < 0 and right_speed < 0: #penalizar marcha atras
-            backward_speed = abs(motion)
-            fitness -= backward_speed * 0.02
-
+    
         return fitness
 
     # ------------------------------------------------------------
@@ -541,7 +558,7 @@ class Evolution:
 # Test best individual
 # ============================================================
 
-def test_best_individual(controller_class):
+def test_best_individual(controller_class): # TODO ir buscar o ficheiro mais recente
 
     filename = (
         f"best_individual_{controller_class.__name__}.json"
