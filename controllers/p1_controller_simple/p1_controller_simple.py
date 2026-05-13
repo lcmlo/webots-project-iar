@@ -40,8 +40,8 @@ SEED = random.randint(0, 1_000_000)
 #SEED = None
 
 
-CONTROLLER_CLASS = BraitenbergController
-#CONTROLLER_CLASS = SimpleANNController
+#CONTROLLER_CLASS = BraitenbergController
+CONTROLLER_CLASS = SimpleANNController
 # CONTROLLER_CLASS = AdvancedANNController
 
 
