@@ -4,6 +4,7 @@ import random
 
 import numpy as np
 from controller import Supervisor
+from pathlib import Path
 from datetime import datetime
 import os
 
@@ -18,7 +19,7 @@ from controllers import (
 # Simulation / Evolution parameters
 # ============================================================
 
-TIME_STEP = 6
+TIME_STEP = 6.4
 
 POPULATION_SIZE = 50
 PARENTS_KEEP = 5
@@ -33,12 +34,15 @@ RANGE = 5
 MAX_SPEED = 9
 
 EARLY_STOPPING = True
-STAGNATION_LIMIT = 10
+STAGNATION_LIMIT = 5
 MIN_IMPROVEMENT = 0.1
 
 SEED = random.randint(0, 1_000_000)
+#SEED = 870207
 #SEED = None
 
+K_POINT_CROSSOVER = 2
+TOURNAMENT_SIZE = 5
 
 #CONTROLLER_CLASS = BraitenbergController
 CONTROLLER_CLASS = SimpleANNController
@@ -48,6 +52,11 @@ CONTROLLER_CLASS = SimpleANNController
 MODE = "train"
 # MODE = "test"
 
+# testar o melhor de uma geracao especifica do ultimo controlador testado
+# MODE = "test_generation"
+# so usado se MODE = "test_generation"
+GENERATION_TO_TEST = 5
+
 
 # ============================================================
 # Utility functions
@@ -56,13 +65,12 @@ MODE = "train"
 def random_orientation(rng):
     angle = rng.uniform(0, 2 * np.pi)
 
-    # rodar no plano da arena (eixo Z)
+    # rodar à volta do eixo Z
     return [0, 0, 1, angle]
-
 
 def random_position(rng):
 
-    spawn_margin = 0.5 # quanto maior o valor menor a area de spawn e
+    spawn_margin = 0.5 # # quanto maior o valor, menor a área de spawn
 
     min_x = -1.2 + spawn_margin
     max_x = 1.2 - spawn_margin
@@ -90,8 +98,9 @@ class Evolution:
 
         self.stats = []
 
-        self.evaluation_start_time = 0
         self.collision = False
+        self.collision_count = 0
+        self.time_on_line = 0
 
         self.best_global_fitness = -float("inf")
         self.best_global_genome = None
@@ -161,6 +170,11 @@ class Evolution:
         self.prev_position = self.robot_node.getPosition()
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.spawn_rng = np.random.default_rng(SEED)
+        self.root = self.supervisor.getRoot()
+        self.children_field = self.root.getField("children")
+
+        self.obstacle_defs = []
+
 
         self.best_individual_filename = (
             "results/best_individuals/"
@@ -177,6 +191,88 @@ class Evolution:
         )
         os.makedirs("results/best_individuals", exist_ok=True)
         os.makedirs("results/training_stats", exist_ok=True)
+
+    def random_obstacle_position(self):
+
+        radius = self.spawn_rng.uniform(0.6, 1.0)
+        angle = self.spawn_rng.uniform(0, 2 * np.pi)
+
+        x = radius * np.cos(angle)
+        y = radius * np.sin(angle)
+
+        return [x, y, 0.1]
+
+    def remove_obstacles(self):
+
+        for obstacle_def in self.obstacle_defs:
+
+            obstacle = self.supervisor.getFromDef(
+                obstacle_def
+            )
+
+            if obstacle is not None:
+                obstacle.remove()
+
+        self.obstacle_defs.clear()
+
+    def generate_obstacles(self):
+
+        # Apenas usar obstáculos no controlador avançado
+        if self.controller_class != AdvancedANNController:
+            return
+
+        obstacle_count = 8
+
+        for i in range(obstacle_count):
+            obstacle_def = f"OBSTACLE_{i}"
+
+            position = self.random_obstacle_position()
+
+            rotation = self.spawn_rng.uniform(
+                0,
+                2 * np.pi
+            )
+
+            size_x = self.spawn_rng.uniform(0.15, 0.3)
+            size_y = self.spawn_rng.uniform(0.15, 0.3)
+
+            obstacle_string = f"""
+            DEF {obstacle_def} Solid {{
+              translation {position[0]} {position[1]} {position[2]}
+              rotation 0 0 1 {rotation}
+
+              children [
+                Shape {{
+                  appearance Appearance {{
+                    material Material {{
+                      diffuseColor 1 1 1
+                    }}
+                  }}
+
+                  geometry Box {{
+                    size {size_x} {size_y} 0.2
+                  }}
+                }}
+              ]
+
+              boundingObject Box {{
+                size {size_x} {size_y} 0.2
+              }}
+
+              physics Physics {{
+                density 1000
+              }}
+            }}
+            """
+
+            self.children_field.importMFNodeFromString(
+                -1,
+                obstacle_string
+            )
+
+            self.obstacle_defs.append(
+                obstacle_def
+            )
 
 
     # ------------------------------------------------------------
@@ -196,6 +292,8 @@ class Evolution:
         self.right_motor.setVelocity(0)
 
         self.collision = False
+        self.collision_count = 0
+        self.time_on_line = 0
         self.__n = 0
         self.total_distance = 0.0
 
@@ -251,6 +349,8 @@ class Evolution:
         sensors = self.get_sensor_data()
 
         self.collision = self.detect_collision()
+        if self.collision:
+            self.collision_count += 1
 
         left_speed, right_speed = active_controller.compute_speeds(sensors)
 
@@ -274,6 +374,7 @@ class Evolution:
 
         if not ground_sensor_left and not ground_sensor_right:
             self.total_distance += step_distance
+            self.time_on_line += 1
 
         self.prev_position = current_position
         self.__n += 1
@@ -289,6 +390,8 @@ class Evolution:
         stagnation_counter = 0
 
         for generation in range(GENERATIONS):
+            self.remove_obstacles()
+            self.generate_obstacles()
             results = [
                 self.evaluate_individual(individual)
                 for individual in population
@@ -296,11 +399,23 @@ class Evolution:
 
             fitnesses = np.array([r["fitness"] for r in results], dtype=float)
             distances = np.array([r["distance"] for r in results], dtype=float)
+            trajectories = [r["trajectory"] for r in results]
+            collision_counts = [
+                r["collision_count"]
+                for r in results
+            ]
 
+            time_on_line_values = [
+                r["time_on_line"]
+                for r in results
+            ]
 
             best_index = int(np.argmax(fitnesses))
             best_fitness = float(fitnesses[best_index])
             best_distance = float(distances[best_index])
+            best_trajectory = trajectories[best_index]
+            best_collision_count = int(collision_counts[best_index])
+            best_time_on_line = int(time_on_line_values[best_index])
 
             avg_fitness = float(np.mean(fitnesses))
             avg_distance = float(np.mean(distances))
@@ -323,12 +438,16 @@ class Evolution:
                     best_distance,
                 )
 
+            self.remove_obstacles()
+            
             print(
                 f"Generation {generation}: "
                 f"Best Fitness = {best_fitness:.2f}, "
                 f"Avg Fitness = {avg_fitness:.2f}, "
                 f"Best Distance = {best_distance:.2f}, "
                 f"Avg Distance = {avg_distance:.2f}, "
+                f"Collisions = {best_collision_count}, "
+                f"Time On Line = {best_time_on_line}, "
                 f"Global Best = {self.best_global_fitness:.2f}"
             )
 
@@ -339,6 +458,10 @@ class Evolution:
                 "best_distance": best_distance,
                 "avg_distance": avg_distance,
                 "global_best_fitness": float(self.best_global_fitness),
+                "best_genome": best_genome.tolist(),
+                "best_trajectory": best_trajectory,
+                "best_collision_count": best_collision_count,
+                "best_time_on_line": best_time_on_line,
             })
 
             self.save_stats()
@@ -350,8 +473,7 @@ class Evolution:
                 )
                 break
 
-            parents_indices = np.argsort(fitnesses)[-PARENTS_KEEP:]
-            parents = [population[i].copy() for i in parents_indices]
+            parents = self.tournament_selection(population,fitnesses,)
 
             population = self.create_next_generation(parents)
 
@@ -365,11 +487,7 @@ class Evolution:
 
     def calculate_step_distance(self, previous_position, current_position):
         """
-        Calculates distance travelled in the horizontal plane.
-
-        Important:
-        If your Webots world uses X/Z as the floor plane, keep [0] and [2].
-        If it uses X/Y as the floor plane, change this to [0] and [1].
+        Calculates distance travelled in the arena plane (X/Y).
         """
 
         return math.dist(
@@ -408,7 +526,7 @@ class Evolution:
         # dar pontos por estar na linha
         # nao permitir estar parado ou frente e tras
         if on_line:
-            fitness += step_distance * 1000.0
+            fitness += step_distance * 1500.0
     
         else:
             fitness -= 1.0
@@ -421,11 +539,11 @@ class Evolution:
             fitness -= abs(normalized_motion) * 2.0
     
         # =========================================================
-        # Penalizar colisoes fortemente
+        # Penalizar colisoes
         # =========================================================
     
         if self.collision:
-            fitness -= 10.0
+            fitness -= 5.0
     
         return fitness
 
@@ -434,10 +552,12 @@ class Evolution:
     # ------------------------------------------------------------
 
     def create_population(self):
-        return [
-            np.random.uniform(-RANGE, RANGE, self.genome_size)
-            for _ in range(POPULATION_SIZE)
-        ]
+        population = []
+        while len(population) < POPULATION_SIZE:
+            genome = np.random.uniform(-RANGE,RANGE,self.genome_size)
+            population.append(genome)
+        return population
+
 
     # ------------------------------------------------------------
     # Individual evaluation
@@ -452,25 +572,35 @@ class Evolution:
 
         start_time = self.supervisor.getTime()
 
+        trajectory = []
+
         while self.supervisor.getTime() - start_time < EVALUATION_TIME:
             step_fitness = self.runStep(active_controller)
             fitness += step_fitness
+            current_position = self.robot_node.getPosition()
+
+            trajectory.append([
+                current_position[0],
+                current_position[1],
+            ])
 
         return {
             "fitness": fitness,
             "distance": self.total_distance,
+            "trajectory": trajectory,
+            "collision_count": self.collision_count,
+            "time_on_line": self.time_on_line,
         }
-
-
 
     # ------------------------------------------------------------
     # Next generation
     # ------------------------------------------------------------
 
     def create_next_generation(self, parents):
+
         next_population = []
 
-        # Elitism: keep best parents directly
+        # Elitism
         for parent in parents:
             next_population.append(parent.copy())
 
@@ -484,19 +614,75 @@ class Evolution:
 
         return next_population
 
+    def tournament_selection(
+            self,
+            population,
+            fitnesses,
+    ):
+
+        selected_parents = []
+
+        for _ in range(PARENTS_KEEP):
+            tournament_indices = random.sample(
+                range(len(population)),
+                TOURNAMENT_SIZE
+            )
+
+            best_index = max(
+                tournament_indices,
+                key=lambda i: fitnesses[i]
+            )
+
+            selected_parents.append(
+                population[best_index].copy()
+            )
+
+        return selected_parents
+
     # ------------------------------------------------------------
     # Crossover
     # ------------------------------------------------------------
 
     def crossover(self, parent1, parent2):
-        crossover_point = random.randint(1, self.genome_size - 1)
 
-        child = np.concatenate((
-            parent1[:crossover_point],
-            parent2[crossover_point:],
-        ))
+        # =========================================================
+        # K-Point crossover
+        # =========================================================
 
-        return child
+        max_points = self.genome_size - 1
+
+        k = min(K_POINT_CROSSOVER, max_points)
+
+        crossover_points = sorted(
+            random.sample(
+                range(1, self.genome_size),
+                k
+            )
+        )
+
+        child = []
+        current_parent = parent1
+
+        previous_point = 0
+
+        for point in crossover_points:
+            child.extend(
+                current_parent[previous_point:point]
+            )
+
+            current_parent = (
+                parent2
+                if current_parent is parent1
+                else parent1
+            )
+
+            previous_point = point
+
+        child.extend(
+            current_parent[previous_point:]
+        )
+
+        return np.array(child)
 
     # ------------------------------------------------------------
     # Mutation
@@ -528,6 +714,9 @@ class Evolution:
             "range": RANGE,
             "max_speed": MAX_SPEED,
             "seed": SEED,
+
+            "k_point_crossover": K_POINT_CROSSOVER,
+            "tournament_size": TOURNAMENT_SIZE,
         }
 
     # ------------------------------------------------------------
@@ -563,6 +752,7 @@ class Evolution:
 
         with open(self.stats_filename, "w") as f:
             json.dump(data, f, indent=4)
+
 
 
 # ============================================================
@@ -620,25 +810,108 @@ def test_best_individual(controller_class):
     while True:
         evolution.runStep(active_controller)
 
+# ============================================================
+# Test best from generation
+# ============================================================
+
+def test_generation(
+        controller_class,
+        generation,
+):
+
+    # =========================================================
+    # Carrega o ficheiro mais recente do controlador
+    # =========================================================
+
+    folder = Path("results/training_stats")
+
+    matching_files = [
+        f for f in folder.glob("*.json")
+        if controller_class.__name__ in f.name
+    ]
+
+    if not matching_files:
+        raise FileNotFoundError(
+            f"No training stats found for "
+            f"{controller_class.__name__}"
+        )
+
+    latest_file = max(
+        matching_files,
+        key=lambda f: f.stat().st_mtime
+    )
+
+    with open(latest_file, "r") as f:
+        data = json.load(f)
+
+    stats = data["stats"]
+
+    # =========================================================
+    # Procurar geração pretendida
+    # =========================================================
+
+    matching_generation = None
+
+    for generation_data in stats:
+
+        if generation_data["generation"] == generation:
+            matching_generation = generation_data
+            break
+
+    if matching_generation is None:
+        raise ValueError(
+            f"Generation {generation} not found."
+        )
+
+    genome = np.array(
+        matching_generation["best_genome"],
+        dtype=float
+    )
+
+    fitness = matching_generation["best_fitness"]
+
+    print(f"\nTesting generation {generation}")
+    print(f"Fitness: {fitness:.2f}")
+
+    evolution = Evolution(controller_class)
+
+    evolution.reset()
+
+    active_controller = controller_class(genome)
+
+    while True:
+        evolution.runStep(active_controller)
+
+
 
 # ============================================================
 # Main
 # ============================================================
 
 def main():
+
     if MODE == "train":
+
         evolution = Evolution(CONTROLLER_CLASS)
         evolution.run()
 
-        # Useful if running Webots in batch/headless mode.
-        # Comment this if you want Webots to stay open after training.
-        # evolution.supervisor.simulationQuit(0)
-
     elif MODE == "test":
-        test_best_individual(CONTROLLER_CLASS)
+
+        test_best_individual(
+            CONTROLLER_CLASS
+        )
+
+    elif MODE == "test_generation":
+
+        test_generation(
+            controller_class=CONTROLLER_CLASS,
+            generation=GENERATION_TO_TEST,
+        )
 
     else:
-        raise ValueError(f"Invalid MODE: {MODE}")
+        raise ValueError(
+            f"Invalid MODE: {MODE}"
+        )
 
 
 if __name__ == "__main__":

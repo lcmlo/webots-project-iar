@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import math
 
 import matplotlib.pyplot as plt
 
@@ -31,7 +32,19 @@ def create_plot_folder(controller_name, timestamp):
 
     folder = (
         f"results/plots/"
-        f"{controller_name}_{timestamp}"
+        f"{controller_name}/"
+        f"{timestamp}"
+    )
+
+    os.makedirs(folder, exist_ok=True)
+
+    return folder
+
+def create_trajectory_folder(controller_name):
+
+    folder = (
+        f"results/trajectories/"
+        f"{controller_name}"
     )
 
     os.makedirs(folder, exist_ok=True)
@@ -96,6 +109,135 @@ def plot_distance(stats, config, plot_folder):
 
     plt.show()
 
+def plot_trajectories(
+        stats,
+        config,
+        plot_folder,
+):
+
+    plt.figure(figsize=(8, 8))
+
+    best_generation = max(
+        stats,
+        key=lambda s: s["best_fitness"]
+    )["generation"]
+
+    for generation_data in stats:
+
+        trajectory = generation_data.get(
+            "best_trajectory",
+            []
+        )
+
+        if not trajectory:
+            continue
+
+        xs = [p[0] for p in trajectory]
+        ys = [p[1] for p in trajectory]
+
+        generation = generation_data["generation"]
+
+        # destacar melhor geração
+        if generation == best_generation:
+
+            plt.plot(
+                xs,
+                ys,
+                linewidth=3,
+                label=f"Best Gen {generation}"
+            )
+
+        else:
+
+            plt.plot(
+                xs,
+                ys,
+                alpha=0.25
+            )
+
+    plt.xlabel("X")
+    plt.ylabel("Y")
+
+    plt.title(
+        f"{config['controller']} Trajectories"
+    )
+
+    plt.axis("equal")
+    plt.grid(True)
+
+    filepath = (
+        f"{plot_folder}/"
+        f"trajectories_overlay.png"
+    )
+
+    plt.savefig(
+        filepath,
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
+def plot_trajectory_grid(
+        stats,
+        config,
+        plot_folder,
+):
+
+    cols = 4
+
+    rows = math.ceil(len(stats) / cols)
+
+    fig, axes = plt.subplots(
+        rows,
+        cols,
+        figsize=(14, 10)
+    )
+
+    axes = axes.flatten()
+
+    for ax, generation_data in zip(axes, stats):
+
+        trajectory = generation_data.get(
+            "best_trajectory",
+            []
+        )
+
+        if trajectory:
+
+            xs = [p[0] for p in trajectory]
+            ys = [p[1] for p in trajectory]
+
+            ax.plot(xs, ys)
+
+        ax.set_title(
+            f"Gen {generation_data['generation']}"
+        )
+
+        ax.set_aspect("equal")
+        ax.grid(True)
+
+    # esconder plots vazios
+    for ax in axes[len(stats):]:
+        ax.axis("off")
+
+    fig.suptitle(
+        f"{config['controller']} Trajectory Evolution"
+    )
+
+    filepath = (
+        f"{plot_folder}/"
+        f"trajectories_grid.png"
+    )
+
+    plt.savefig(
+        filepath,
+        dpi=300,
+        bbox_inches="tight"
+    )
+
+    plt.show()
+
 
 def main():
 
@@ -111,6 +253,18 @@ def main():
     plot_fitness(stats, config, plot_folder)
 
     plot_distance(stats, config, plot_folder)
+
+    plot_trajectories(
+        stats,
+        config,
+        plot_folder,
+    )
+
+    plot_trajectory_grid(
+        stats,
+        config,
+        plot_folder,
+    )
 
     print(f"\nPlots saved to: {plot_folder}")
 
