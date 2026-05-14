@@ -4,6 +4,7 @@ from pathlib import Path
 import math
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def get_latest_stats_file():
@@ -109,65 +110,132 @@ def plot_distance(stats, config, plot_folder):
 
     plt.show()
 
-def plot_trajectories(
+def plot_trajectory(
         stats,
         config,
         plot_folder,
 ):
 
-    plt.figure(figsize=(8, 8))
+    plt.figure(figsize=(12, 8))
 
-    best_generation = max(
+    # =========================================================
+    # Best generation overall
+    # =========================================================
+
+    best_generation_data = max(
         stats,
         key=lambda s: s["best_fitness"]
-    )["generation"]
-
-    for generation_data in stats:
-
-        trajectory = generation_data.get(
-            "best_trajectory",
-            []
-        )
-
-        if not trajectory:
-            continue
-
-        xs = [p[0] for p in trajectory]
-        ys = [p[1] for p in trajectory]
-
-        generation = generation_data["generation"]
-
-        # destacar melhor geração
-        if generation == best_generation:
-
-            plt.plot(
-                xs,
-                ys,
-                linewidth=3,
-                label=f"Best Gen {generation}"
-            )
-
-        else:
-
-            plt.plot(
-                xs,
-                ys,
-                alpha=0.25
-            )
-
-    plt.xlabel("X")
-    plt.ylabel("Y")
-
-    plt.title(
-        f"{config['controller']} Trajectories"
     )
 
-    plt.axis("equal")
+    trajectory = best_generation_data.get(
+        "best_trajectory",
+        []
+    )
+
+    if not trajectory:
+        return
+
+    xs = [p[0] for p in trajectory]
+    ys = [p[1] for p in trajectory]
+
+    generation = best_generation_data["generation"]
+
+    best_fitness = best_generation_data["best_fitness"]
+
+    best_distance = best_generation_data.get(
+        "best_distance",
+        0
+    )
+
+    collision_count = best_generation_data.get(
+        "best_collision_count",
+        "N/A"
+    )
+
+    time_on_line = best_generation_data.get(
+        "best_time_on_line",
+        "N/A"
+    )
+
+    # =========================================================
+    # Best trajectory found during evolution
+    # =========================================================
+
+    plt.plot(
+        xs,
+        ys,
+        linewidth=3,
+        label=(
+            f"Best Individual\n"
+            f"Generation: {generation}\n"
+            f"Fitness: {best_fitness:.2f}\n"
+            f"Distance: {best_distance:.2f} m\n"
+            f"Collisions: {collision_count}\n"
+            f"Time on line: {time_on_line}"
+        )
+    )
+
+    # =========================================================
+    # Ideal exploration reference path
+    # =========================================================
+
+    ideal_x = [
+        -0.9, 0.9,
+         0.9, -0.9,
+        -0.9
+    ]
+
+    ideal_y = [
+        -0.9, -0.9,
+         0.9,  0.9,
+        -0.9
+    ]
+
+    plt.plot(
+        ideal_x,
+        ideal_y,
+        color="orange",
+        linestyle="--",
+        linewidth=2,
+        label="Ideal Arena Exploration Path"
+    )
+
+    plt.xlabel("Arena X Position")
+    plt.ylabel("Arena Y Position")
+
+    plt.title(
+        f"{config['controller']} - "
+        f"Best Overall Trajectory"
+    )
+
+    # =========================================================
+    # Fixed arena limits
+    # =========================================================
+
+    plt.xlim(-1, 1)
+    plt.ylim(-1, 1)
+
+    plt.gca().set_aspect("equal", adjustable="box")
+    plt.margins(0)
+
+    # =========================================================
+    # Legend outside plot
+    # =========================================================
+
+    plt.legend(
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.0)
+    )
+
     plt.grid(True)
+
+    plt.tight_layout(
+        rect=[0, 0, 0.78, 1]
+    )
 
     filepath = (
         f"{plot_folder}/"
-        f"trajectories_overlay.png"
+        f"best_trajectory.png"
     )
 
     plt.savefig(
@@ -184,45 +252,150 @@ def plot_trajectory_grid(
         plot_folder,
 ):
 
-    cols = 4
+    # =========================================================
+    # Número fixo de plots
+    # =========================================================
 
-    rows = math.ceil(len(stats) / cols)
+    FIXED_PLOTS = 9
+
+    cols = 3
+    rows = 3
 
     fig, axes = plt.subplots(
         rows,
         cols,
-        figsize=(14, 10)
+        figsize=(14, 14)
     )
 
     axes = axes.flatten()
 
-    for ax, generation_data in zip(axes, stats):
+    # =========================================================
+    # Dividir gerações igualmente
+    # =========================================================
 
-        trajectory = generation_data.get(
-            "best_trajectory",
-            []
+    generation_groups = np.array_split(
+        stats,
+        FIXED_PLOTS
+    )
+
+    # remover grupos vazios
+    generation_groups = [
+        group
+        for group in generation_groups
+        if len(group) > 0
+    ]
+
+    # =========================================================
+    # Ideal path
+    # =========================================================
+
+    ideal_x = [
+        -0.9, 0.9,
+         0.9, -0.9,
+        -0.9
+    ]
+
+    ideal_y = [
+        -0.9, -0.9,
+         0.9,  0.9,
+        -0.9
+    ]
+
+    # =========================================================
+    # Plot groups
+    # =========================================================
+
+    for ax, group in zip(axes, generation_groups):
+
+        colors = plt.cm.tab10(
+            np.linspace(0, 1, len(group))
         )
 
-        if trajectory:
+        # -----------------------------------------------------
+        # Ideal exploration path
+        # -----------------------------------------------------
+
+        ax.plot(
+            ideal_x,
+            ideal_y,
+            color="orange",
+            linestyle="--",
+            linewidth=1.5,
+            label="Ideal Path"
+        )
+
+        # -----------------------------------------------------
+        # Plot all generations in this group
+        # -----------------------------------------------------
+
+        first_generation = group[0]["generation"]
+        last_generation = group[-1]["generation"]
+
+        for generation_data, color in zip(group, colors):
+
+            trajectory = generation_data.get(
+                "best_trajectory",
+                []
+            )
+
+            generation = generation_data["generation"]
+
+            if not trajectory:
+                continue
 
             xs = [p[0] for p in trajectory]
             ys = [p[1] for p in trajectory]
 
-            ax.plot(xs, ys)
+            ax.plot(
+                xs,
+                ys,
+                color=color,
+                linewidth=2,
+                label=f"Gen {generation}"
+            )
 
-        ax.set_title(
-            f"Gen {generation_data['generation']}"
-        )
+        # -----------------------------------------------------
+        # Arena setup
+        # -----------------------------------------------------
+
+        if first_generation == last_generation:
+
+            title = f"Gen {first_generation}"
+
+        else:
+
+            title = (
+                f"Gen {first_generation} - "
+                f"{last_generation}"
+            )
+
+        ax.set_title(title)
+
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
 
         ax.set_aspect("equal")
+
         ax.grid(True)
 
+        ax.legend(
+            fontsize=7,
+            loc="upper right"
+        )
+
     # esconder plots vazios
-    for ax in axes[len(stats):]:
+    for ax in axes[len(generation_groups):]:
         ax.axis("off")
 
     fig.suptitle(
-        f"{config['controller']} Trajectory Evolution"
+        f"{config['controller']} "
+        f"Trajectory Evolution"
+    )
+
+    plt.subplots_adjust(
+        hspace=0.4,
+        wspace=0.3,
+        top=0.93
     )
 
     filepath = (
@@ -254,11 +427,7 @@ def main():
 
     plot_distance(stats, config, plot_folder)
 
-    plot_trajectories(
-        stats,
-        config,
-        plot_folder,
-    )
+    plot_trajectory(stats, config, plot_folder)
 
     plot_trajectory_grid(
         stats,
