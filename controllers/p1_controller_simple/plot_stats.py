@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-import math
+from matplotlib.patches import Rectangle
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -176,24 +176,14 @@ def plot_trajectory(
     )
 
     # =========================================================
-    # Ideal exploration reference path
+    # Ideal track from Webots world
     # =========================================================
 
-    ideal_x = [
-        -0.9, 0.9,
-         0.9, -0.9,
-        -0.9
-    ]
+    ax = plt.gca()
 
-    ideal_y = [
-        -0.9, -0.9,
-         0.9,  0.9,
-        -0.9
-    ]
+    addIdealPath(ax)
 
     plt.plot(
-        ideal_x,
-        ideal_y,
         color="orange",
         linestyle="--",
         linewidth=2,
@@ -212,8 +202,8 @@ def plot_trajectory(
     # Fixed arena limits
     # =========================================================
 
-    plt.xlim(-1, 1)
-    plt.ylim(-1, 1)
+    plt.xlim(-1.5, 1.5)
+    plt.ylim(-1.5, 1.5)
 
     plt.gca().set_aspect("equal", adjustable="box")
     plt.margins(0)
@@ -285,21 +275,6 @@ def plot_trajectory_grid(
         if len(group) > 0
     ]
 
-    # =========================================================
-    # Ideal path
-    # =========================================================
-
-    ideal_x = [
-        -0.9, 0.9,
-         0.9, -0.9,
-        -0.9
-    ]
-
-    ideal_y = [
-        -0.9, -0.9,
-         0.9,  0.9,
-        -0.9
-    ]
 
     # =========================================================
     # Plot groups
@@ -315,9 +290,9 @@ def plot_trajectory_grid(
         # Ideal exploration path
         # -----------------------------------------------------
 
+        addIdealPath(ax)
+
         ax.plot(
-            ideal_x,
-            ideal_y,
             color="orange",
             linestyle="--",
             linewidth=1.5,
@@ -371,8 +346,8 @@ def plot_trajectory_grid(
 
         ax.set_title(title)
 
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(-1, 1)
+        ax.set_xlim(-1.5, 1.5)
+        ax.set_ylim(-1.5, 1.5)
 
         ax.set_aspect("equal")
 
@@ -410,6 +385,63 @@ def plot_trajectory_grid(
     )
 
     plt.show()
+
+
+def addIdealPath(ax):
+    track_width = 0.1
+
+    # top
+    ax.add_patch(
+        Rectangle(
+            (-0.9, 0.94),
+            1.8,
+            track_width,
+            facecolor="orange",
+            alpha=0.25,
+            edgecolor="orange",
+            linewidth=1
+        )
+    )
+
+    # bottom
+    ax.add_patch(
+        Rectangle(
+            (-0.9, -1.04),
+            1.8,
+            track_width,
+            facecolor="orange",
+            alpha=0.25,
+            edgecolor="orange",
+            linewidth=1
+        )
+    )
+
+    # left
+    ax.add_patch(
+        Rectangle(
+            (-1.11, -0.8),
+            track_width,
+            1.6,
+            facecolor="orange",
+            alpha=0.25,
+            edgecolor="orange",
+            linewidth=1
+        )
+    )
+
+    # right
+    ax.add_patch(
+        Rectangle(
+            (0.94, -0.9),
+            track_width,
+            1.8,
+            facecolor="orange",
+            alpha=0.25,
+            edgecolor="orange",
+            linewidth=1,
+            label="Ideal Track"
+        )
+    )
 
 
 def main():
