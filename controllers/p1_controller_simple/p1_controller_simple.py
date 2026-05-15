@@ -7,6 +7,7 @@ from controller import Supervisor
 from pathlib import Path
 from datetime import datetime
 import os
+from collections import deque
 
 from controllers import (
     BraitenbergController,
@@ -46,7 +47,7 @@ TOURNAMENT_SIZE = 5
 
 #CONTROLLER_CLASS = BraitenbergController
 CONTROLLER_CLASS = SimpleANNController
-# CONTROLLER_CLASS = AdvancedANNController
+#CONTROLLER_CLASS = AdvancedANNController
 
 
 MODE = "train"
@@ -101,6 +102,11 @@ class Evolution:
         self.collision = False
         self.collision_count = 0
         self.time_on_line = 0
+
+        # gerir ultimas posicoes na linha, para penalizar repiticoes
+        # TODO fazer tune a maxlen e cell size
+        self.recent_positions = deque(maxlen=80)
+        self.position_cell_size = 0.10
 
         self.best_global_fitness = -float("inf")
         self.best_global_genome = None
@@ -192,6 +198,23 @@ class Evolution:
         os.makedirs("results/best_individuals", exist_ok=True)
         os.makedirs("results/training_stats", exist_ok=True)
 
+    # ============================================================
+    # For controlling novelty on the line
+    # ============================================================
+
+    def get_position_cell(self, position):
+        x = position[0]
+        y = position[1]
+
+        cell_x = int(x / self.position_cell_size)
+        cell_y = int(y / self.position_cell_size)
+
+        return cell_x, cell_y
+
+    # ============================================================
+    # Obstacles for ANN advanced
+    # ============================================================
+
     def random_obstacle_position(self):
 
         radius = self.spawn_rng.uniform(0.6, 1.0)
@@ -280,6 +303,8 @@ class Evolution:
     # ------------------------------------------------------------
 
     def reset(self):
+        self.recent_positions.clear()
+
         random_rotation = random_orientation(self.spawn_rng)
         random_translation = random_position(self.spawn_rng)
 
@@ -379,7 +404,12 @@ class Evolution:
         self.prev_position = current_position
         self.__n += 1
 
-        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed)
+        # checkar se ja passou aqui recentemente para poder penalizar
+        position_cell = self.get_position_cell(current_position)
+        revisited_recently = (position_cell in self.recent_positions)
+        self.recent_positions.append(position_cell)
+
+        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, revisited_recently)
 
     # ------------------------------------------------------------
     # Run evolution
@@ -505,6 +535,7 @@ class Evolution:
         step_distance,
         left_speed,
         right_speed,
+        revisited_recently
     ):
         fitness = 0.0
     
@@ -526,7 +557,9 @@ class Evolution:
         # dar pontos por estar na linha
         # nao permitir estar parado ou frente e tras
         if on_line:
-            fitness += step_distance * 1500.0
+            if not revisited_recently:
+                fitness += step_distance * 1000.0
+
     
         else:
             fitness -= 1.0
@@ -543,7 +576,7 @@ class Evolution:
         # =========================================================
     
         if self.collision:
-            fitness -= 5.0
+            fitness -= 10.0
     
         return fitness
 
