@@ -21,14 +21,14 @@ from controllers import (
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 50
+POPULATION_SIZE = 25
 PARENTS_KEEP = 5
 GENERATIONS = 50
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 300  
+EVALUATION_TIME = 120  
 
 RANGE = 5
 MAX_SPEED = 9
@@ -45,7 +45,7 @@ K_POINT_CROSSOVER = 2
 TOURNAMENT_SIZE = 5
 
 #Buffer de celulas ja visitadas na linha
-MAX_BUFFER_SIZE = 150
+MAX_BUFFER_SIZE = 20
 CELL_SIZE = 0.1
 
 #CONTROLLER_CLASS = BraitenbergController
@@ -570,13 +570,11 @@ class Evolution:
         # nao permitir estar parado ou frente e tras
         if on_line:
             if revisited_recently:
-                fitness -= step_distance * 50.0
+                fitness -= 0.5
             else:
-                fitness += step_distance * 250.0
-
-    
+                fitness += step_distance * 500.0
         else:
-            fitness -= 1.0
+            fitness -= 0.1
     
         # =========================================================
         # Penalizar marcha atras
