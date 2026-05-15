@@ -7,7 +7,6 @@ from controller import Supervisor
 from pathlib import Path
 from datetime import datetime
 import os
-from collections import deque
 
 from controllers import (
     BraitenbergController,
@@ -24,7 +23,7 @@ TIME_STEP = 6.4
 
 POPULATION_SIZE = 50
 PARENTS_KEEP = 5
-GENERATIONS = 20
+GENERATIONS = 50
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
@@ -35,7 +34,7 @@ RANGE = 5
 MAX_SPEED = 9
 
 EARLY_STOPPING = True
-STAGNATION_LIMIT = 5
+STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT = 0.1
 
 SEED = random.randint(0, 1_000_000)
@@ -44,6 +43,10 @@ SEED = random.randint(0, 1_000_000)
 
 K_POINT_CROSSOVER = 2
 TOURNAMENT_SIZE = 5
+
+#Buffer de celulas ja visitadas na linha
+MAX_BUFFER_SIZE = 150
+CELL_SIZE = 0.1
 
 #CONTROLLER_CLASS = BraitenbergController
 CONTROLLER_CLASS = SimpleANNController
@@ -104,9 +107,9 @@ class Evolution:
         self.time_on_line = 0
 
         # gerir ultimas posicoes na linha, para penalizar repiticoes
-        # TODO fazer tune a maxlen e cell size
-        self.recent_positions = deque(maxlen=80)
-        self.position_cell_size = 0.10
+        # TODO fazer tune a MAX_BUFFER_SIZE e cell size
+        self.recent_positions = {}
+        self.position_cell_size = CELL_SIZE
 
         self.best_global_fitness = -float("inf")
         self.best_global_genome = None
@@ -397,18 +400,27 @@ class Evolution:
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
 
+        # checkar se ja passou aqui recentemente para poder penalizar
+        revisited_recently = False
+
         if not ground_sensor_left and not ground_sensor_right:
             self.total_distance += step_distance
             self.time_on_line += 1
 
+            position_cell = self.get_position_cell(current_position)
+            revisited_recently = (position_cell in self.recent_positions)
+
+            if not revisited_recently:
+                self.recent_positions[position_cell] = True
+
+                if len(self.recent_positions) > MAX_BUFFER_SIZE: #abrir espaco no buffer quando atinge max size
+                    oldest_position = next(iter(self.recent_positions))
+                    del self.recent_positions[oldest_position]
+            
+
         self.prev_position = current_position
         self.__n += 1
-
-        # checkar se ja passou aqui recentemente para poder penalizar
-        position_cell = self.get_position_cell(current_position)
-        revisited_recently = (position_cell in self.recent_positions)
-        self.recent_positions.append(position_cell)
-
+        
         return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, revisited_recently)
 
     # ------------------------------------------------------------
@@ -557,8 +569,10 @@ class Evolution:
         # dar pontos por estar na linha
         # nao permitir estar parado ou frente e tras
         if on_line:
-            if not revisited_recently:
-                fitness += step_distance * 1000.0
+            if revisited_recently:
+                fitness -= step_distance * 50.0
+            else:
+                fitness += step_distance * 250.0
 
     
         else:
