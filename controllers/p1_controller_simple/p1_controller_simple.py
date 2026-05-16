@@ -48,9 +48,6 @@ TOURNAMENT_SIZE = 5
 MAX_BUFFER_SIZE = 30
 CELL_SIZE = 0.05
 
-# movimento minimo necessario em m para considerar que o robot se deslocou
-MIN_MOVEMENT_THRESHOLD = 0.001
-
 #CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
 CONTROLLER_CLASS = AdvancedANNController
@@ -743,18 +740,17 @@ class Evolution:
             fitness -= 0.1
 
         # =========================================================
-        # Penalizar parado
+        # Penalizar parado ou quase
         # =========================================================
-        moving = step_distance > MIN_MOVEMENT_THRESHOLD
-        if not moving:
-            fitness -= 2.0
+        if abs(left_speed) < 0.1 and abs(right_speed) < 0.1:
+            fitness -= 0.5
     
         # =========================================================
         # Penalizar marcha atras
         # =========================================================
 
         if left_speed < 0 and right_speed < 0:
-            fitness -= 1.0
+            fitness -= 0.5
     
         # =========================================================
         # Penalizar colisoes
