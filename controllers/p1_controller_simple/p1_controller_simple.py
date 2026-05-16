@@ -22,7 +22,7 @@ from controllers import (
 TIME_STEP = 6.4
 
 POPULATION_SIZE = 100
-PARENTS_KEEP = 5
+PARENTS_KEEP = 15
 GENERATIONS = 50
 
 MUTATION_RATE = 0.2
@@ -48,9 +48,12 @@ TOURNAMENT_SIZE = 5
 MAX_BUFFER_SIZE = 30
 CELL_SIZE = 0.05
 
+# movimento minimo necessario em m para considerar que o robot se deslocou
+MIN_MOVEMENT_THRESHOLD = 0.005
+
 #CONTROLLER_CLASS = BraitenbergController
-CONTROLLER_CLASS = SimpleANNController
-#CONTROLLER_CLASS = AdvancedANNController
+#CONTROLLER_CLASS = SimpleANNController
+CONTROLLER_CLASS = AdvancedANNController
 
 
 MODE = "train"
@@ -97,6 +100,8 @@ def random_position(rng):
 
 class Evolution:
     def __init__(self, controller_class):
+        self.current_spawn_rotation = None
+        self.current_spawn_translation = None
         self.controller_class = controller_class
         self.genome_size = controller_class.GENOME_SIZE
 
@@ -106,8 +111,6 @@ class Evolution:
         self.collision_count = 0
         self.time_on_line = 0
 
-        # gerir ultimas posicoes na linha, para penalizar repiticoes
-        # TODO fazer tune a MAX_BUFFER_SIZE e cell size
         self.recent_positions = {}
         self.position_cell_size = CELL_SIZE
 
@@ -218,13 +221,134 @@ class Evolution:
     # Obstacles for ANN advanced
     # ============================================================
 
+    def point_to_track_distance(self, x, y):
+
+        track_segments = [
+
+            # topo
+            ((-0.8, 1.0), (0.8, 1.0)),
+
+            # direita
+            ((1.0, 0.8), (1.0, -0.8)),
+
+            # baixo
+            ((0.8, -1.0), (-0.8, -1.0)),
+
+            # esquerda
+            ((-1.0, -0.8), (-1.0, 0.8)),
+        ]
+
+        min_distance = float("inf")
+
+        for start, end in track_segments:
+
+            x1, y1 = start
+            x2, y2 = end
+
+            dx = x2 - x1
+            dy = y2 - y1
+
+            if dx == 0 and dy == 0:
+                distance = math.dist((x, y), (x1, y1))
+
+            else:
+                t = (
+                        ((x - x1) * dx + (y - y1) * dy)
+                        / (dx * dx + dy * dy)
+                )
+
+                t = max(0.0, min(1.0, t))
+
+                proj_x = x1 + t * dx
+                proj_y = y1 + t * dy
+
+                distance = math.dist((x, y), (proj_x, proj_y))
+
+            min_distance = min(min_distance, distance)
+
+        return min_distance
+
+    def is_valid_obstacle_position(
+            self,
+            x,
+            y,
+            size_x,
+            size_y,
+            existing_obstacles,
+            relax_factor,
+    ):
+
+        obstacle_radius = max(size_x, size_y) * 0.5
+
+        # =========================================================
+        # distancia minima à linha
+        # =========================================================
+
+        line_clearance = (
+                0.05
+                * (1.0 - relax_factor)
+        )
+
+        distance_to_track = self.point_to_track_distance(x, y)
+
+        if (
+                distance_to_track
+                <
+                obstacle_radius + line_clearance
+        ):
+            return False
+
+        # =========================================================
+        # distancia minima ao spawn
+        # =========================================================
+
+        spawn_clearance = (
+                0.20
+                * (1.0 - relax_factor * 0.5)
+        )
+
+        spawn_distance = math.dist(
+            (x, y),
+            (
+                self.current_spawn_translation[0],
+                self.current_spawn_translation[1]
+            )
+        )
+
+        if spawn_distance < spawn_clearance:
+            return False
+
+        # =========================================================
+        # distancia minima entre obstaculos
+        # =========================================================
+
+        obstacle_min_distance = (
+                0.13
+                * (1.0 - relax_factor * 0.4)
+        )
+
+        for other_x, other_y, other_radius in existing_obstacles:
+
+            distance = math.dist(
+                (x, y),
+                (other_x, other_y)
+            )
+
+            if (
+                    distance
+                    <
+                    obstacle_radius
+                    + other_radius
+                    + obstacle_min_distance
+            ):
+                return False
+
+        return True
+
     def random_obstacle_position(self):
 
-        radius = self.spawn_rng.uniform(0.6, 1.0)
-        angle = self.spawn_rng.uniform(0, 2 * np.pi)
-
-        x = radius * np.cos(angle)
-        y = radius * np.sin(angle)
+        x = self.spawn_rng.uniform(-1.1, 1.1)
+        y = self.spawn_rng.uniform(-1.1, 1.1)
 
         return [x, y, 0.1]
 
@@ -243,76 +367,116 @@ class Evolution:
 
     def generate_obstacles(self):
 
-        # Apenas usar obstáculos no controlador avançado
         if self.controller_class != AdvancedANNController:
             return
 
-        obstacle_count = 8
+        obstacle_count = self.spawn_rng.integers(4, 11)
+
+        existing_obstacles = []
 
         for i in range(obstacle_count):
+
             obstacle_def = f"OBSTACLE_{i}"
 
-            position = self.random_obstacle_position()
+            placed = False
+            attempts = 0
 
-            rotation = self.spawn_rng.uniform(
-                0,
-                2 * np.pi
-            )
+            while not placed and attempts < 500:
 
-            size_x = self.spawn_rng.uniform(0.15, 0.3)
-            size_y = self.spawn_rng.uniform(0.15, 0.3)
+                attempts += 1
 
-            obstacle_string = f"""
-            DEF {obstacle_def} Solid {{
-              translation {position[0]} {position[1]} {position[2]}
-              rotation 0 0 1 {rotation}
+                relax_factor = min(
+                    1.0,
+                    attempts / 500.0
+                )
 
-              children [
-                Shape {{
-                  appearance Appearance {{
-                    material Material {{
-                      diffuseColor 1 1 1
+                position = self.random_obstacle_position()
+
+                rotation = self.spawn_rng.uniform(
+                    0,
+                    2 * np.pi
+                )
+
+                size_x = self.spawn_rng.uniform(0.10, 0.24)
+                size_y = self.spawn_rng.uniform(0.10, 0.24)
+
+                obstacle_radius = max(size_x, size_y) * 0.5
+
+                valid = self.is_valid_obstacle_position(
+                    position[0],
+                    position[1],
+                    size_x,
+                    size_y,
+                    existing_obstacles,
+                    relax_factor,
+                )
+
+                if not valid:
+                    continue
+
+                obstacle_string = f"""
+                DEF {obstacle_def} Solid {{
+                  translation {position[0]} {position[1]} {position[2]}
+                  rotation 0 0 1 {rotation}
+
+                  children [
+                    Shape {{
+                      appearance Appearance {{
+                        material Material {{
+                          diffuseColor 1 1 1
+                        }}
+                      }}
+
+                      geometry Box {{
+                        size {size_x} {size_y} 0.2
+                      }}
                     }}
-                  }}
+                  ]
 
-                  geometry Box {{
+                  boundingObject Box {{
                     size {size_x} {size_y} 0.2
                   }}
+
+                  physics Physics {{
+                    density 1000
+                  }}
                 }}
-              ]
+                """
 
-              boundingObject Box {{
-                size {size_x} {size_y} 0.2
-              }}
+                self.children_field.importMFNodeFromString(
+                    -1,
+                    obstacle_string
+                )
 
-              physics Physics {{
-                density 1000
-              }}
-            }}
-            """
+                existing_obstacles.append(
+                    (
+                        position[0],
+                        position[1],
+                        obstacle_radius,
+                    )
+                )
 
-            self.children_field.importMFNodeFromString(
-                -1,
-                obstacle_string
-            )
+                self.obstacle_defs.append(obstacle_def)
 
-            self.obstacle_defs.append(
-                obstacle_def
-            )
+                placed = True
 
 
     # ------------------------------------------------------------
     # Reset robot
     # ------------------------------------------------------------
 
-    def reset(self):
+    def reset(self, new_spawn=True):
         self.recent_positions.clear()
 
-        random_rotation = random_orientation(self.spawn_rng)
-        random_translation = random_position(self.spawn_rng)
+        if new_spawn:
+            random_rotation = random_orientation(self.spawn_rng)
+            random_translation = random_position(self.spawn_rng)
 
-        self.rotation_field.setSFRotation(random_rotation)
-        self.translation_field.setSFVec3f(random_translation)
+            self.current_spawn_rotation = random_rotation
+            self.current_spawn_translation = random_translation
+
+        self.rotation_field.setSFRotation(self.current_spawn_rotation)
+        self.translation_field.setSFVec3f(self.current_spawn_translation)
 
         self.robot_node.resetPhysics()
 
@@ -433,6 +597,7 @@ class Evolution:
         previous_best_fitness = -float("inf")
 
         for generation in range(GENERATIONS):
+            self.reset(new_spawn=True)
             self.remove_obstacles()
             self.generate_obstacles()
             results = [
@@ -561,30 +726,35 @@ class Evolution:
             not ground_sensor_left and
             not ground_sensor_right
         )
-    
-        motion = (left_speed + right_speed) / 2.0
-        normalized_motion = motion / MAX_SPEED
-    
+
         # =========================================================
         # Recompensa principal:
-        # distancia percorrida na linha
+        # distancia percorrida na linha em locais novos
         # =========================================================
-        # dar pontos por estar na linha
-        # nao permitir estar parado ou frente e tras
+
         if on_line:
+
             if revisited_recently:
                 fitness -= 0.5
             else:
                 fitness += step_distance * 1000.0
+
         else:
             fitness -= 0.1
+
+        # =========================================================
+        # Penalizar parado
+        # =========================================================
+        moving = step_distance > MIN_MOVEMENT_THRESHOLD
+        if not moving:
+            fitness -= 2.0
     
         # =========================================================
         # Penalizar marcha atras
         # =========================================================
-    
+
         if left_speed < 0 and right_speed < 0:
-            fitness -= abs(normalized_motion) * 2.0
+            fitness -= 1.0
     
         # =========================================================
         # Penalizar colisoes
@@ -612,7 +782,7 @@ class Evolution:
     # ------------------------------------------------------------
 
     def evaluate_individual(self, genome):
-        self.reset()
+        self.reset(new_spawn=False)
 
         active_controller = self.controller_class(genome)
 
