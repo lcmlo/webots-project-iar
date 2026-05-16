@@ -49,7 +49,7 @@ MAX_BUFFER_SIZE = 30
 CELL_SIZE = 0.05
 
 # movimento minimo necessario em m para considerar que o robot se deslocou
-MIN_MOVEMENT_THRESHOLD = 0.005
+MIN_MOVEMENT_THRESHOLD = 0.001
 
 #CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
