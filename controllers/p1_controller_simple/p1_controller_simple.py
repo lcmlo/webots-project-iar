@@ -21,21 +21,21 @@ from controllers import (
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 25
+POPULATION_SIZE = 100
 PARENTS_KEEP = 5
 GENERATIONS = 50
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 120  
+EVALUATION_TIME = 300  
 
 RANGE = 5
 MAX_SPEED = 9
 
 EARLY_STOPPING = True
-STAGNATION_LIMIT = 10
-MIN_IMPROVEMENT = 0.1
+STAGNATION_LIMIT = 5
+MIN_IMPROVEMENT = 25
 
 SEED = random.randint(0, 1_000_000)
 #SEED = 870207
@@ -45,8 +45,8 @@ K_POINT_CROSSOVER = 2
 TOURNAMENT_SIZE = 5
 
 #Buffer de celulas ja visitadas na linha
-MAX_BUFFER_SIZE = 20
-CELL_SIZE = 0.1
+MAX_BUFFER_SIZE = 30
+CELL_SIZE = 0.05
 
 #CONTROLLER_CLASS = BraitenbergController
 CONTROLLER_CLASS = SimpleANNController
@@ -57,7 +57,7 @@ MODE = "train"
 # MODE = "test"
 
 # testar o melhor de uma geracao especifica do ultimo controlador testado
-# MODE = "test_generation"
+#MODE = "test_generation"
 # so usado se MODE = "test_generation"
 GENERATION_TO_TEST = 5
 
@@ -430,6 +430,7 @@ class Evolution:
     def run(self):
         population = self.create_population()
         stagnation_counter = 0
+        previous_best_fitness = -float("inf")
 
         for generation in range(GENERATIONS):
             self.remove_obstacles()
@@ -464,10 +465,12 @@ class Evolution:
 
             best_genome = population[best_index]
 
-            if best_fitness > self.best_global_fitness + MIN_IMPROVEMENT:
+            if best_fitness > previous_best_fitness + MIN_IMPROVEMENT:
                 stagnation_counter = 0
             else:
                 stagnation_counter += 1
+
+            previous_best_fitness = best_fitness
 
             if best_fitness > self.best_global_fitness:
                 self.best_global_fitness = best_fitness
@@ -572,7 +575,7 @@ class Evolution:
             if revisited_recently:
                 fitness -= 0.5
             else:
-                fitness += step_distance * 500.0
+                fitness += step_distance * 1000.0
         else:
             fitness -= 0.1
     
