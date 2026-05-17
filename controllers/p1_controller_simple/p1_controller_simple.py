@@ -21,22 +21,25 @@ from controllers import (
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 100
+POPULATION_SIZE = 20
 PARENTS_KEEP = 15
 GENERATIONS = 50
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 300  
+EVALUATION_TIME = 1  
 
 RANGE = 5
 MAX_SPEED = 9
 
 EARLY_STOPPING = True
 STAGNATION_LIMIT = 5
-MIN_IMPROVEMENT = 25
+MIN_IMPROVEMENT_PERCENT = 0.05
 
+#para reproduzir exatamente as condicoes de treino
+# usar o numero da seed do treino
+# para averiguar se aprendeu mesmo deixar random ou None
 SEED = random.randint(0, 1_000_000)
 #SEED = 870207
 #SEED = None
@@ -54,13 +57,20 @@ CONTROLLER_CLASS = AdvancedANNController
 
 
 MODE = "train"
-# MODE = "test"
+#MODE = "test"
 
 # testar o melhor de uma geracao especifica do ultimo controlador testado
 #MODE = "test_generation"
 # so usado se MODE = "test_generation"
-GENERATION_TO_TEST = 5
+GENERATION_TO_TEST = 48
 
+# se ambos forem none usa o mais recente para os modes de test
+# se so o nome vai buscar o mais recente desse controller
+# so o timestamp vai buscar esse especifico
+# TEST_CONTROLLER_NAME = None
+# TEST_TIMESTAMP = None
+TEST_CONTROLLER_NAME = "AdvancedANNController"
+TEST_TIMESTAMP = "20260516_215621"
 
 # ============================================================
 # Utility functions
@@ -97,6 +107,7 @@ def random_position(rng):
 
 class Evolution:
     def __init__(self, controller_class):
+        self.current_obstacles = None
         self.current_spawn_rotation = None
         self.current_spawn_translation = None
         self.controller_class = controller_class
@@ -367,6 +378,8 @@ class Evolution:
         if self.controller_class != AdvancedANNController:
             return
 
+        self.current_obstacles = []
+
         obstacle_count = self.spawn_rng.integers(4, 11)
 
         existing_obstacles = []
@@ -454,6 +467,14 @@ class Evolution:
                 )
 
                 self.obstacle_defs.append(obstacle_def)
+
+                self.current_obstacles.append({
+                    "x": position[0],
+                    "y": position[1],
+                    "size_x": size_x,
+                    "size_y": size_y,
+                    "rotation": rotation,
+                })
 
                 placed = True
 
@@ -627,7 +648,10 @@ class Evolution:
 
             best_genome = population[best_index]
 
-            if best_fitness > previous_best_fitness + MIN_IMPROVEMENT:
+            improvement = best_fitness - previous_best_fitness
+            required_improvement = (abs(previous_best_fitness) * MIN_IMPROVEMENT_PERCENT)
+
+            if improvement > required_improvement:
                 stagnation_counter = 0
             else:
                 stagnation_counter += 1
@@ -669,6 +693,7 @@ class Evolution:
                 "best_trajectory": best_trajectory,
                 "best_collision_count": best_collision_count,
                 "best_time_on_line": best_time_on_line,
+                "obstacles": self.current_obstacles,
             })
 
             self.save_stats()
@@ -730,14 +755,12 @@ class Evolution:
         # =========================================================
 
         if on_line:
-
             if revisited_recently:
-                fitness -= 0.5
+                fitness -= 5.0
             else:
-                fitness += step_distance * 1000.0
-
+                fitness += step_distance * 250.0
         else:
-            fitness -= 0.1
+            fitness -= 5.0
 
         # =========================================================
         # Penalizar parado ou quase
@@ -977,13 +1000,24 @@ def test_best_individual(controller_class):
 
     folder = "results/best_individuals"
 
-    matching_files = [
-        f for f in os.listdir(folder)
-        if (
-            controller_class.__name__ in f and
-            f.endswith(".json")
-        )
-    ]
+    matching_files = []
+
+    for f in os.listdir(folder):
+
+        if not f.endswith(".json"):
+            continue
+
+        if TEST_CONTROLLER_NAME is not None:
+
+            if TEST_CONTROLLER_NAME not in f:
+                continue
+
+        if TEST_TIMESTAMP is not None:
+
+            if TEST_TIMESTAMP not in f:
+                continue
+
+        matching_files.append(f)
 
     if not matching_files:
         raise FileNotFoundError(
@@ -1017,7 +1051,9 @@ def test_best_individual(controller_class):
 
     evolution = Evolution(controller_class)
 
-    evolution.reset()
+    evolution.reset(new_spawn=True)
+    evolution.remove_obstacles()
+    evolution.generate_obstacles()
 
     active_controller = controller_class(genome)
 
@@ -1039,10 +1075,23 @@ def test_generation(
 
     folder = Path("results/training_stats")
 
-    matching_files = [
-        f for f in folder.glob("*.json")
-        if controller_class.__name__ in f.name
-    ]
+    matching_files = []
+
+    for f in folder.glob("*.json"):
+
+        filename = f.name
+
+        if TEST_CONTROLLER_NAME is not None:
+
+            if TEST_CONTROLLER_NAME not in filename:
+                continue
+
+        if TEST_TIMESTAMP is not None:
+
+            if TEST_TIMESTAMP not in filename:
+                continue
+
+        matching_files.append(f)
 
     if not matching_files:
         raise FileNotFoundError(
@@ -1089,7 +1138,10 @@ def test_generation(
 
     evolution = Evolution(controller_class)
 
-    evolution.reset()
+    evolution.reset(new_spawn=True)
+
+    evolution.remove_obstacles()
+    evolution.generate_obstacles()
 
     active_controller = controller_class(genome)
 

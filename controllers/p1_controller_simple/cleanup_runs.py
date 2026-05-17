@@ -13,6 +13,10 @@ best_folder = Path(
     "results/best_individuals"
 )
 
+plots_folder = Path(
+    "results/plots"
+)
+
 
 def main():
 
@@ -68,6 +72,7 @@ def main():
         remove_run(stats_file, data)
 
         removed_runs += 1
+        cleanup_orphan_plots()
 
     print(
         f"\nRemoved {removed_runs} runs."
@@ -95,6 +100,66 @@ def remove_run(stats_file, data):
 
         best_file.unlink()
 
+    matching_plot_dirs = list(
+        plots_folder.glob(
+            f"*/{timestamp}"
+        )
+    )
+
+    for plot_dir in matching_plot_dirs:
+
+        print(
+            f"Removing plots: "
+            f"{plot_dir}"
+        )
+
+        for file in plot_dir.glob("*"):
+            file.unlink()
+
+        plot_dir.rmdir()
+
+def cleanup_orphan_plots():
+
+    existing_timestamps = set()
+
+    for stats_file in stats_folder.glob("*.json"):
+
+        with open(stats_file, "r") as f:
+            data = json.load(f)
+
+        timestamp = data.get("timestamp")
+
+        if timestamp is not None:
+            existing_timestamps.add(timestamp)
+
+    plot_controller_dirs = list(
+        plots_folder.glob("*")
+    )
+
+    for controller_dir in plot_controller_dirs:
+
+        if not controller_dir.is_dir():
+            continue
+
+        for plot_dir in controller_dir.glob("*"):
+
+            if not plot_dir.is_dir():
+                continue
+
+            timestamp = plot_dir.name
+
+            if timestamp in existing_timestamps:
+                continue
+
+            print(
+                f"Removing orphan plots: "
+                f"{plot_dir}"
+            )
+
+            for file in plot_dir.glob("*"):
+                file.unlink()
+
+            plot_dir.rmdir()
 
 if __name__ == "__main__":
     main()

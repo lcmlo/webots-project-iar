@@ -183,6 +183,13 @@ def plot_trajectory(
 
     addIdealPath(ax)
 
+    obstacles = best_generation_data.get(
+        "obstacles",
+        []
+    )
+
+    addObstacles(ax, obstacles)
+
     plt.plot(
         color="orange",
         linestyle="--",
@@ -305,6 +312,18 @@ def plot_trajectory_grid(
 
         first_generation = group[0]["generation"]
         last_generation = group[-1]["generation"]
+
+        single_generation_plot = (
+                first_generation == last_generation
+        )
+
+        if single_generation_plot:
+            obstacles = group[0].get(
+                "obstacles",
+                []
+            )
+
+            addObstacles(ax, obstacles)
 
         for generation_data, color in zip(group, colors):
 
@@ -442,6 +461,31 @@ def addIdealPath(ax):
             label="Ideal Track"
         )
     )
+def addObstacles(ax, obstacles):
+
+    for obstacle in obstacles:
+
+        x = obstacle["x"]
+        y = obstacle["y"]
+
+        size_x = obstacle["size_x"]
+        size_y = obstacle["size_y"]
+
+        rectangle = Rectangle(
+            (
+                x - size_x / 2,
+                y - size_y / 2,
+            ),
+            size_x,
+            size_y,
+            facecolor="gray",
+            edgecolor="black",
+            linewidth=1,
+            alpha=0.7,
+            zorder=1,
+        )
+
+        ax.add_patch(rectangle)
 
 
 def main():
