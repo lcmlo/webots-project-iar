@@ -21,14 +21,14 @@ from controllers import (
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 20
+POPULATION_SIZE = 100
 PARENTS_KEEP = 15
 GENERATIONS = 50
 
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 1  
+EVALUATION_TIME = 300
 
 RANGE = 5
 MAX_SPEED = 9
@@ -289,12 +289,51 @@ class Evolution:
         obstacle_radius = max(size_x, size_y) * 0.5
 
         # =========================================================
+        # evitar paredes exteriores
+        # =========================================================
+
+        wall_clearance = 0.18
+
+        if (
+                abs(x) > 1.2 - wall_clearance - obstacle_radius
+                or
+                abs(y) > 1.2 - wall_clearance - obstacle_radius
+        ):
+            return False
+
+        # =========================================================
+        # evitar cantos da pista
+        # =========================================================
+
+        track_corner_clearance = 0.30
+
+        track_corners = [
+            (-1.0, 0.8),
+            (1.0, 0.8),
+            (-1.0, -0.8),
+            (1.0, -0.8),
+        ]
+
+        for corner_x, corner_y in track_corners:
+
+            corner_distance = math.dist(
+                (x, y),
+                (corner_x, corner_y)
+            )
+
+            if corner_distance < (
+                    track_corner_clearance
+                    + obstacle_radius
+            ):
+                return False
+
+        # =========================================================
         # distancia minima à linha
         # =========================================================
 
         line_clearance = (
-                0.05
-                * (1.0 - relax_factor)
+                0.10
+                * (1.0 - relax_factor * 0.5)
         )
 
         distance_to_track = self.point_to_track_distance(x, y)
