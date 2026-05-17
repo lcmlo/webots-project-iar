@@ -462,6 +462,8 @@ def addIdealPath(ax):
         )
     )
 def addObstacles(ax, obstacles):
+    if not obstacles:
+        return
 
     for obstacle in obstacles:
 

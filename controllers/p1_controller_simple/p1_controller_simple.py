@@ -35,7 +35,7 @@ MAX_SPEED = 9
 
 EARLY_STOPPING = True
 STAGNATION_LIMIT = 5
-MIN_IMPROVEMENT_PERCENT = 0.05
+MIN_IMPROVEMENT_PERCENT = 0.005
 
 #para reproduzir exatamente as condicoes de treino
 # usar o numero da seed do treino
@@ -51,9 +51,9 @@ TOURNAMENT_SIZE = 5
 MAX_BUFFER_SIZE = 30
 CELL_SIZE = 0.05
 
-#CONTROLLER_CLASS = BraitenbergController
+CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-CONTROLLER_CLASS = AdvancedANNController
+#CONTROLLER_CLASS = AdvancedANNController
 
 
 MODE = "train"
