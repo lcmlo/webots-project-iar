@@ -28,7 +28,7 @@ GENERATIONS = 50
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 90
+EVALUATION_TIME = 100
 EVALUATION_RUNS = 3
 
 RANGE = 5
@@ -334,7 +334,7 @@ class Evolution:
         # =========================================================
 
         line_clearance = (
-                0.10
+                0.13
                 * (1.0 - relax_factor * 0.5)
         )
 
@@ -372,7 +372,7 @@ class Evolution:
         # =========================================================
 
         obstacle_min_distance = (
-                0.13
+                0.16
                 * (1.0 - relax_factor * 0.4)
         )
 
@@ -777,6 +777,8 @@ class Evolution:
             fitnesses = np.array([r["fitness"] for r in results], dtype=float)
             distances = np.array([r["distance"] for r in results], dtype=float)
             trajectories = [r["trajectory"] for r in results]
+            obstacles_data = [r["obstacles"] for r in results]
+
             collision_counts = [
                 r["collision_count"]
                 for r in results
@@ -793,6 +795,7 @@ class Evolution:
             best_trajectory = trajectories[best_index]
             best_collision_count = int(collision_counts[best_index])
             best_time_on_line = int(time_on_line_values[best_index])
+            best_obstacles = obstacles_data[best_index]
 
             avg_fitness = float(np.mean(fitnesses))
             avg_distance = float(np.mean(distances))
@@ -844,7 +847,7 @@ class Evolution:
                 "best_trajectory": best_trajectory,
                 "best_collision_count": best_collision_count,
                 "best_time_on_line": best_time_on_line,
-                "obstacles": self.current_obstacles,
+                "obstacles": best_obstacles,
             })
 
             self.save_stats()
@@ -955,6 +958,7 @@ class Evolution:
 
         best_run_fitness = -float("inf")
         best_trajectory = None
+        best_obstacles = None
 
         total_fitness = 0.0
         total_distance = 0.0
@@ -1010,6 +1014,7 @@ class Evolution:
             if run_fitness > best_run_fitness:
                 best_run_fitness = run_fitness
                 best_trajectory = trajectory
+                best_obstacles = scenario["obstacles"]
 
         return {
             "fitness": (
@@ -1023,6 +1028,7 @@ class Evolution:
             ),
 
             "trajectory": best_trajectory,
+            "obstacles" : best_obstacles,
 
             "collision_count": (
                     total_collision_count
