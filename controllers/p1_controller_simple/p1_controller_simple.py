@@ -28,7 +28,8 @@ GENERATIONS = 50
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 300
+EVALUATION_TIME = 90
+EVALUATION_RUNS = 3
 
 RANGE = 5
 MAX_SPEED = 9
@@ -51,9 +52,9 @@ TOURNAMENT_SIZE = 5
 MAX_BUFFER_SIZE = 30
 CELL_SIZE = 0.05
 
-CONTROLLER_CLASS = BraitenbergController
+#CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-#CONTROLLER_CLASS = AdvancedANNController
+CONTROLLER_CLASS = AdvancedANNController
 
 
 MODE = "train"
@@ -62,15 +63,15 @@ MODE = "train"
 # testar o melhor de uma geracao especifica do ultimo controlador testado
 #MODE = "test_generation"
 # so usado se MODE = "test_generation"
-GENERATION_TO_TEST = 48
+GENERATION_TO_TEST = 19
 
 # se ambos forem none usa o mais recente para os modes de test
 # se so o nome vai buscar o mais recente desse controller
 # so o timestamp vai buscar esse especifico
-# TEST_CONTROLLER_NAME = None
-# TEST_TIMESTAMP = None
-TEST_CONTROLLER_NAME = "AdvancedANNController"
-TEST_TIMESTAMP = "20260516_215621"
+TEST_CONTROLLER_NAME = None
+TEST_TIMESTAMP = None
+#TEST_CONTROLLER_NAME = "AdvancedANNController"
+#TEST_TIMESTAMP = "20260516_215621"
 
 # ============================================================
 # Utility functions
@@ -194,6 +195,7 @@ class Evolution:
         self.children_field = self.root.getField("children")
 
         self.obstacle_defs = []
+        self.generation_scenarios = []
 
 
         self.best_individual_filename = (
@@ -522,18 +524,130 @@ class Evolution:
     # Reset robot
     # ------------------------------------------------------------
 
-    def reset(self, new_spawn=True):
+    def create_generation_scenarios(self):
+
+        self.generation_scenarios = []
+
+        for _ in range(EVALUATION_RUNS):
+            rotation = random_orientation(
+                self.spawn_rng
+            )
+
+            translation = random_position(
+                self.spawn_rng
+            )
+
+            self.current_spawn_rotation = rotation
+            self.current_spawn_translation = translation
+
+            self.remove_obstacles()
+            self.generate_obstacles()
+
+            scenario = {
+                "rotation": rotation,
+                "translation": translation,
+
+                "obstacles": (
+                    self.current_obstacles.copy()
+                    if self.current_obstacles is not None
+                    else None
+                )
+            }
+
+            self.generation_scenarios.append(scenario)
+
+        self.remove_obstacles()
+
+    def spawn_obstacles_from_data(
+            self,
+            obstacles_data,
+    ):
+
+        if obstacles_data is None:
+            return
+
+        for i, obstacle_data in enumerate(obstacles_data):
+            obstacle_def = f"OBSTACLE_{i}"
+
+            obstacle_string = f"""
+            DEF {obstacle_def} Solid {{
+              translation
+                {obstacle_data['x']}
+                {obstacle_data['y']}
+                0.1
+
+              rotation 0 0 1 {obstacle_data['rotation']}
+
+              children [
+                Shape {{
+                  appearance Appearance {{
+                    material Material {{
+                      diffuseColor 1 1 1
+                    }}
+                  }}
+
+                  geometry Box {{
+                    size
+                      {obstacle_data['size_x']}
+                      {obstacle_data['size_y']}
+                      0.2
+                  }}
+                }}
+              ]
+
+              boundingObject Box {{
+                size
+                  {obstacle_data['size_x']}
+                  {obstacle_data['size_y']}
+                  0.2
+              }}
+
+              physics Physics {{
+                density 1000
+              }}
+            }}
+            """
+
+            self.children_field.importMFNodeFromString(
+                -1,
+                obstacle_string
+            )
+
+            self.obstacle_defs.append(
+                obstacle_def
+            )
+
+    def reset(
+            self,
+            new_spawn=True,
+            spawn_rotation=None,
+            spawn_translation=None,
+    ):
         self.recent_positions.clear()
 
-        if new_spawn:
-            random_rotation = random_orientation(self.spawn_rng)
-            random_translation = random_position(self.spawn_rng)
+        if spawn_rotation is not None:
+            self.current_spawn_rotation = spawn_rotation
 
-            self.current_spawn_rotation = random_rotation
-            self.current_spawn_translation = random_translation
+        elif new_spawn:
+            self.current_spawn_rotation = random_orientation(
+                self.spawn_rng
+            )
 
-        self.rotation_field.setSFRotation(self.current_spawn_rotation)
-        self.translation_field.setSFVec3f(self.current_spawn_translation)
+        if spawn_translation is not None:
+            self.current_spawn_translation = spawn_translation
+
+        elif new_spawn:
+            self.current_spawn_translation = random_position(
+                self.spawn_rng
+            )
+
+        self.rotation_field.setSFRotation(
+            self.current_spawn_rotation
+        )
+
+        self.translation_field.setSFVec3f(
+            self.current_spawn_translation
+        )
 
         self.robot_node.resetPhysics()
 
@@ -654,9 +768,7 @@ class Evolution:
         previous_best_fitness = -float("inf")
 
         for generation in range(GENERATIONS):
-            self.reset(new_spawn=True)
-            self.remove_obstacles()
-            self.generate_obstacles()
+            self.create_generation_scenarios()
             results = [
                 self.evaluate_individual(individual)
                 for individual in population
@@ -795,31 +907,31 @@ class Evolution:
 
         if on_line:
             if revisited_recently:
-                fitness -= 5.0
+                fitness -= 0.2
             else:
-                fitness += step_distance * 250.0
+                fitness += step_distance * 500.0
         else:
-            fitness -= 5.0
-
+            fitness -= 0.5
+        
         # =========================================================
         # Penalizar parado ou quase
         # =========================================================
         if abs(left_speed) < 0.1 and abs(right_speed) < 0.1:
-            fitness -= 0.5
+            fitness -= 0.1
     
         # =========================================================
         # Penalizar marcha atras
         # =========================================================
 
         if left_speed < 0 and right_speed < 0:
-            fitness -= 0.5
+            fitness -= 0.1
     
         # =========================================================
         # Penalizar colisoes
         # =========================================================
     
         if self.collision:
-            fitness -= 10.0
+            fitness -= 2.0
     
         return fitness
 
@@ -840,32 +952,87 @@ class Evolution:
     # ------------------------------------------------------------
 
     def evaluate_individual(self, genome):
-        self.reset(new_spawn=False)
 
-        active_controller = self.controller_class(genome)
+        best_run_fitness = -float("inf")
+        best_trajectory = None
 
-        fitness = 0.0
+        total_fitness = 0.0
+        total_distance = 0.0
+        total_collision_count = 0
+        total_time_on_line = 0
 
-        start_time = self.supervisor.getTime()
+        for scenario in self.generation_scenarios:
 
-        trajectory = []
+            self.reset(
+                new_spawn=False,
+                spawn_rotation=scenario["rotation"],
+                spawn_translation=scenario["translation"],
+            )
 
-        while self.supervisor.getTime() - start_time < EVALUATION_TIME:
-            step_fitness = self.runStep(active_controller)
-            fitness += step_fitness
-            current_position = self.robot_node.getPosition()
+            self.remove_obstacles()
 
-            trajectory.append([
-                current_position[0],
-                current_position[1],
-            ])
+            self.spawn_obstacles_from_data(
+                scenario["obstacles"]
+            )
+
+            active_controller = self.controller_class(genome)
+
+            run_fitness = 0.0
+            trajectory = []
+
+            start_time = self.supervisor.getTime()
+
+            while (
+                    self.supervisor.getTime() - start_time
+                    <
+                    EVALUATION_TIME
+            ):
+                step_fitness = self.runStep(
+                    active_controller
+                )
+
+                run_fitness += step_fitness
+
+                current_position = (
+                    self.robot_node.getPosition()
+                )
+
+                trajectory.append([
+                    current_position[0],
+                    current_position[1],
+                ])
+
+            total_fitness += run_fitness
+            total_distance += self.total_distance
+            total_collision_count += self.collision_count
+            total_time_on_line += self.time_on_line
+
+            if run_fitness > best_run_fitness:
+                best_run_fitness = run_fitness
+                best_trajectory = trajectory
 
         return {
-            "fitness": fitness,
-            "distance": self.total_distance,
-            "trajectory": trajectory,
-            "collision_count": self.collision_count,
-            "time_on_line": self.time_on_line,
+            "fitness": (
+                    total_fitness
+                    / EVALUATION_RUNS
+            ),
+
+            "distance": (
+                    total_distance
+                    / EVALUATION_RUNS
+            ),
+
+            "trajectory": best_trajectory,
+
+            "collision_count": (
+                    total_collision_count
+                    / EVALUATION_RUNS
+            ),
+
+            "time_on_line": (
+                    total_time_on_line
+                    / EVALUATION_RUNS
+            ),
         }
 
     # ------------------------------------------------------------
