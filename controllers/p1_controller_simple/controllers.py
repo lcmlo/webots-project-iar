@@ -72,151 +72,193 @@ class BraitenbergController(BaseController):
 
         return left_speed, right_speed
 
+class ANN:
+
+    def __init__(
+            self,
+            genome,
+            layer_sizes,
+            hidden_activation=np.tanh,
+            output_activation=np.tanh,
+    ):
+        self.genome = genome
+        self.layer_sizes = layer_sizes
+
+        self.hidden_activation = hidden_activation
+        self.output_activation = output_activation
+
+        self.weights = []
+        self.biases = []
+
+        self._decode_genome()
+
+    def _decode_genome(self):
+        index = 0
+
+        for i in range(len(self.layer_sizes) - 1):
+            inputs = self.layer_sizes[i]
+            outputs = self.layer_sizes[i + 1]
+
+            weight_count = inputs * outputs
+
+            W = self.genome[
+                index:index + weight_count
+            ].reshape(inputs, outputs)
+
+            index += weight_count
+
+            b = self.genome[
+                index:index + outputs
+            ]
+
+            index += outputs
+
+            self.weights.append(W)
+            self.biases.append(b)
+
+    def forward(self, inputs):
+
+        x = np.asarray(inputs, dtype=float)
+
+        for i in range(len(self.weights)):
+
+            x = (
+                    np.dot(x, self.weights[i])
+                    + self.biases[i]
+            )
+
+            is_output_layer = (
+                    i == len(self.weights) - 1
+            )
+
+            if is_output_layer:
+                x = self.output_activation(x)
+            else:
+                x = self.hidden_activation(x)
+
+        return x
+
+    @staticmethod
+    def calculate_genome_size(layer_sizes):
+        size = 0
+
+        for i in range(len(layer_sizes) - 1):
+            inputs = layer_sizes[i]
+            outputs = layer_sizes[i + 1]
+
+            size += inputs * outputs
+            size += outputs
+
+        return size
 
 class SimpleANNController(BaseController):
-    INPUT_SIZE = 2
-    HIDDEN_SIZE = 4
-    OUTPUT_SIZE = 2
+    LAYERS = [2, 4, 2]
 
-    GENOME_SIZE = (
-        INPUT_SIZE * HIDDEN_SIZE +
-        HIDDEN_SIZE * OUTPUT_SIZE +
-        HIDDEN_SIZE +
-        OUTPUT_SIZE
+    HIDDEN_ACTIVATION = np.tanh
+    OUTPUT_ACTIVATION = np.tanh
+
+    GENOME_SIZE = ANN.calculate_genome_size(
+        LAYERS
     )
 
     def __init__(self, genome):
         super().__init__(genome)
-        self._decode_genome()
 
-    def _decode_genome(self):
-        index = 0
-
-        input_hidden_size = self.INPUT_SIZE * self.HIDDEN_SIZE
-        hidden_output_size = self.HIDDEN_SIZE * self.OUTPUT_SIZE
-        hidden_bias_size = self.HIDDEN_SIZE
-        output_bias_size = self.OUTPUT_SIZE
-
-        self.w_input_hidden = self.genome[
-            index:index + input_hidden_size
-        ].reshape(self.INPUT_SIZE, self.HIDDEN_SIZE)
-
-        index += input_hidden_size
-
-        self.w_hidden_output = self.genome[
-            index:index + hidden_output_size
-        ].reshape(self.HIDDEN_SIZE, self.OUTPUT_SIZE)
-
-        index += hidden_output_size
-
-        self.b_hidden = self.genome[
-            index:index + hidden_bias_size
-        ]
-
-        index += hidden_bias_size
-
-        self.b_output = self.genome[
-            index:index + output_bias_size
-        ]
+        self.ann = ANN(
+            genome=self.genome,
+            layer_sizes=self.LAYERS,
+            hidden_activation=self.HIDDEN_ACTIVATION,
+            output_activation=self.OUTPUT_ACTIVATION,
+        )
 
     def compute_speeds(self, sensors):
-        ground_left = self._ground_value(sensors, "ground_left")
-        ground_right = self._ground_value(sensors, "ground_right")
-
-        inputs = np.array(
-            [ground_left, ground_right],
-            dtype=float
+        ground_left = self._ground_value(
+            sensors,
+            "ground_left"
         )
 
-        hidden = np.tanh(
-            np.dot(inputs, self.w_input_hidden) + self.b_hidden
+        ground_right = self._ground_value(
+            sensors,
+            "ground_right"
         )
 
-        outputs = np.tanh(
-            np.dot(hidden, self.w_hidden_output) + self.b_output
+        outputs = self.ann.forward(
+            [ground_left, ground_right]
         )
 
-        left_speed = self._scale_ann_output_to_speed(outputs[0])
-        right_speed = self._scale_ann_output_to_speed(outputs[1])
+        left_speed = self._scale_ann_output_to_speed(
+            outputs[0]
+        )
+
+        right_speed = self._scale_ann_output_to_speed(
+            outputs[1]
+        )
 
         return left_speed, right_speed
-    
 
 class AdvancedANNController(BaseController):
- 
-    INPUT_SIZE = 5
-    HIDDEN_SIZE = 64
-    OUTPUT_SIZE = 2
 
-    GENOME_SIZE = (
-        INPUT_SIZE * HIDDEN_SIZE +
-        HIDDEN_SIZE * OUTPUT_SIZE +
-        HIDDEN_SIZE +
-        OUTPUT_SIZE
+    LAYERS = [5, 32, 16, 2]
+
+    HIDDEN_ACTIVATION = np.tanh
+    OUTPUT_ACTIVATION = np.tanh
+
+    GENOME_SIZE = ANN.calculate_genome_size(
+        LAYERS
     )
 
     def __init__(self, genome):
         super().__init__(genome)
-        self._decode_genome()
 
-    def _decode_genome(self):
-        index = 0
-
-        input_hidden_size = self.INPUT_SIZE * self.HIDDEN_SIZE
-        hidden_output_size = self.HIDDEN_SIZE * self.OUTPUT_SIZE
-        hidden_bias_size = self.HIDDEN_SIZE
-        output_bias_size = self.OUTPUT_SIZE
-
-        self.w_input_hidden = self.genome[
-            index:index + input_hidden_size
-        ].reshape(self.INPUT_SIZE, self.HIDDEN_SIZE)
-
-        index += input_hidden_size
-
-        self.w_hidden_output = self.genome[
-            index:index + hidden_output_size
-        ].reshape(self.HIDDEN_SIZE, self.OUTPUT_SIZE)
-
-        index += hidden_output_size
-
-        self.b_hidden = self.genome[
-            index:index + hidden_bias_size
-        ]
-
-        index += hidden_bias_size
-
-        self.b_output = self.genome[
-            index:index + output_bias_size
-        ]
+        self.ann = ANN(
+            genome=self.genome,
+            layer_sizes=self.LAYERS,
+            hidden_activation=self.HIDDEN_ACTIVATION,
+            output_activation=self.OUTPUT_ACTIVATION,
+        )
 
     def compute_speeds(self, sensors):
-        ground_left = self._ground_value(sensors, "ground_left")
-        ground_right = self._ground_value(sensors, "ground_right")
+        ground_left = self._ground_value(
+            sensors,
+            "ground_left"
+        )
 
-        prox_left = self._proximity_value(sensors, "prox_left")
-        prox_center = self._proximity_value(sensors, "prox_center")
-        prox_right = self._proximity_value(sensors, "prox_right")
+        ground_right = self._ground_value(
+            sensors,
+            "ground_right"
+        )
 
-        inputs = np.array(
+        prox_left = self._proximity_value(
+            sensors,
+            "prox_left"
+        )
+
+        prox_center = self._proximity_value(
+            sensors,
+            "prox_center"
+        )
+
+        prox_right = self._proximity_value(
+            sensors,
+            "prox_right"
+        )
+
+        outputs = self.ann.forward(
             [
                 ground_left,
                 ground_right,
                 prox_left,
                 prox_center,
-                prox_right
-            ],
-            dtype=float
+                prox_right,
+            ]
         )
 
-        hidden = np.tanh(
-            np.dot(inputs, self.w_input_hidden) + self.b_hidden
+        left_speed = self._scale_ann_output_to_speed(
+            outputs[0]
         )
 
-        outputs = np.tanh(
-            np.dot(hidden, self.w_hidden_output) + self.b_output
+        right_speed = self._scale_ann_output_to_speed(
+            outputs[1]
         )
-
-        left_speed = self._scale_ann_output_to_speed(outputs[0])
-        right_speed = self._scale_ann_output_to_speed(outputs[1])
 
         return left_speed, right_speed

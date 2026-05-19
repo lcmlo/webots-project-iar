@@ -14,54 +14,53 @@ from controllers import (
     AdvancedANNController,
 )
 
-
 # ============================================================
 # Simulation / Evolution parameters
 # ============================================================
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 100
-PARENTS_KEEP = 15
+POPULATION_SIZE = 30
+PARENTS_KEEP = 10
 GENERATIONS = 50
 
-MUTATION_RATE = 0.2
+MUTATION_RATE = 0.1
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 100
-EVALUATION_RUNS = 3
+EVALUATION_TIME = 60
+EVALUATION_RUNS = 1
 
 RANGE = 5
 MAX_SPEED = 9
 
 EARLY_STOPPING = True
-STAGNATION_LIMIT = 5
+STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT_PERCENT = 0.005
 
-#para reproduzir exatamente as condicoes de treino
+# para reproduzir exatamente as condicoes de treino
 # usar o numero da seed do treino
 # para averiguar se aprendeu mesmo deixar random ou None
 SEED = random.randint(0, 1_000_000)
-#SEED = 870207
-#SEED = None
+# SEED = 870207
+# SEED = None
 
-K_POINT_CROSSOVER = 2
-TOURNAMENT_SIZE = 5
+TOURNAMENT_SIZE = 3
+K_POINT_CROSSOVER = 1
 
-#Buffer de celulas ja visitadas na linha
-MAX_BUFFER_SIZE = 30
+# Buffer de celulas ja visitadas na linha
+LINE_BUFFER_SIZE = 30
+GLOBAL_BUFFER_SIZE = 50
 CELL_SIZE = 0.05
 
-#CONTROLLER_CLASS = BraitenbergController
-#CONTROLLER_CLASS = SimpleANNController
+# CONTROLLER_CLASS = BraitenbergController
+# CONTROLLER_CLASS = SimpleANNController
 CONTROLLER_CLASS = AdvancedANNController
 
-
 MODE = "train"
-#MODE = "test"
+# MODE = "test"
 
 # testar o melhor de uma geracao especifica do ultimo controlador testado
-#MODE = "test_generation"
+# MODE = "test_generation"
 # so usado se MODE = "test_generation"
 GENERATION_TO_TEST = 19
 
@@ -70,8 +69,10 @@ GENERATION_TO_TEST = 19
 # so o timestamp vai buscar esse especifico
 TEST_CONTROLLER_NAME = None
 TEST_TIMESTAMP = None
-#TEST_CONTROLLER_NAME = "AdvancedANNController"
-#TEST_TIMESTAMP = "20260516_215621"
+
+
+# TEST_CONTROLLER_NAME = "AdvancedANNController"
+# TEST_TIMESTAMP = "20260516_215621"
 
 # ============================================================
 # Utility functions
@@ -83,9 +84,9 @@ def random_orientation(rng):
     # rodar à volta do eixo Z
     return [0, 0, 1, angle]
 
-def random_position(rng):
 
-    spawn_margin = 0.5 # # quanto maior o valor, menor a área de spawn
+def random_position(rng):
+    spawn_margin = 0.5  # # quanto maior o valor, menor a área de spawn
 
     min_x = -1.2 + spawn_margin
     max_x = 1.2 - spawn_margin
@@ -120,7 +121,8 @@ class Evolution:
         self.collision_count = 0
         self.time_on_line = 0
 
-        self.recent_positions = {}
+        self.line_recent_positions = {}  # guarda so ultimas posicoes na linha
+        self.global_recent_positions = {}  # guarda posicoes recentes em qualquer sitio
         self.position_cell_size = CELL_SIZE
 
         self.best_global_fitness = -float("inf")
@@ -196,7 +198,6 @@ class Evolution:
 
         self.obstacle_defs = []
         self.generation_scenarios = []
-
 
         self.best_individual_filename = (
             "results/best_individuals/"
@@ -519,7 +520,6 @@ class Evolution:
 
                 placed = True
 
-
     # ------------------------------------------------------------
     # Reset robot
     # ------------------------------------------------------------
@@ -623,7 +623,8 @@ class Evolution:
             spawn_rotation=None,
             spawn_translation=None,
     ):
-        self.recent_positions.clear()
+        self.line_recent_positions.clear()
+        self.global_recent_positions.clear()
 
         if spawn_rotation is not None:
             self.current_spawn_rotation = spawn_rotation
@@ -694,13 +695,13 @@ class Evolution:
     def detect_collision(self):
         return bool(
             self.__n > 10 and (
-                self.__ir_0.getValue() > 4300 or
-                self.__ir_1.getValue() > 4300 or
-                self.__ir_2.getValue() > 4300 or
-                self.__ir_3.getValue() > 4300 or
-                self.__ir_4.getValue() > 4300 or
-                self.__ir_5.getValue() > 4300 or
-                self.__ir_6.getValue() > 4300
+                    self.__ir_0.getValue() > 4300 or
+                    self.__ir_1.getValue() > 4300 or
+                    self.__ir_2.getValue() > 4300 or
+                    self.__ir_3.getValue() > 4300 or
+                    self.__ir_4.getValue() > 4300 or
+                    self.__ir_5.getValue() > 4300 or
+                    self.__ir_6.getValue() > 4300
             )
         )
 
@@ -736,27 +737,33 @@ class Evolution:
         ground_sensor_right = sensors["ground_right"]
 
         # checkar se ja passou aqui recentemente para poder penalizar
-        revisited_recently = False
+        line_revisited = False
+        position_cell = self.get_position_cell(current_position)
 
-        if not ground_sensor_left and not ground_sensor_right:
+        global_revisited = (position_cell in self.global_recent_positions)
+        if not global_revisited:
+            self.global_recent_positions[position_cell] = True
+
+            if len(self.global_recent_positions) > GLOBAL_BUFFER_SIZE:
+                oldest_position = next(iter(self.global_recent_positions))
+                del self.global_recent_positions[oldest_position]
+
+        if not ground_sensor_left and not ground_sensor_right:  # esta na linha
             self.total_distance += step_distance
             self.time_on_line += 1
 
-            position_cell = self.get_position_cell(current_position)
-            revisited_recently = (position_cell in self.recent_positions)
+            line_revisited = (position_cell in self.line_recent_positions)
+            if not line_revisited:
+                self.line_recent_positions[position_cell] = True
 
-            if not revisited_recently:
-                self.recent_positions[position_cell] = True
-
-                if len(self.recent_positions) > MAX_BUFFER_SIZE: #abrir espaco no buffer quando atinge max size
-                    oldest_position = next(iter(self.recent_positions))
-                    del self.recent_positions[oldest_position]
-            
+                if len(self.line_recent_positions) > LINE_BUFFER_SIZE:  # abrir espaco no buffer quando atinge max size
+                    oldest_position = next(iter(self.line_recent_positions))
+                    del self.line_recent_positions[oldest_position]
 
         self.prev_position = current_position
         self.__n += 1
-        
-        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, revisited_recently)
+
+        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, line_revisited, global_revisited)
 
     # ------------------------------------------------------------
     # Run evolution
@@ -824,7 +831,7 @@ class Evolution:
                 )
 
             self.remove_obstacles()
-            
+
             print(
                 f"Generation {generation}: "
                 f"Best Fitness = {best_fitness:.2f}, "
@@ -859,7 +866,7 @@ class Evolution:
                 )
                 break
 
-            parents = self.tournament_selection(population,fitnesses,)
+            parents = self.tournament_selection(population, fitnesses, )
 
             population = self.create_next_generation(parents)
 
@@ -886,21 +893,22 @@ class Evolution:
     # ------------------------------------------------------------
 
     def get_step_fitness(
-        self,
-        sensors,
-        step_distance,
-        left_speed,
-        right_speed,
-        revisited_recently
+            self,
+            sensors,
+            step_distance,
+            left_speed,
+            right_speed,
+            line_revisited,
+            global_revisited
     ):
         fitness = 0.0
-    
+
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
-    
+
         on_line = (
-            not ground_sensor_left and
-            not ground_sensor_right
+                not ground_sensor_left and
+                not ground_sensor_right
         )
 
         # =========================================================
@@ -909,33 +917,20 @@ class Evolution:
         # =========================================================
 
         if on_line:
-            if revisited_recently:
-                fitness -= 0.2
+            if line_revisited:
+                fitness -= 0.1
             else:
-                fitness += step_distance * 500.0
+                fitness += step_distance * 1000.0
         else:
-            fitness -= 0.5
-        
-        # =========================================================
-        # Penalizar parado ou quase
-        # =========================================================
-        if abs(left_speed) < 0.1 and abs(right_speed) < 0.1:
-            fitness -= 0.1
-    
-        # =========================================================
-        # Penalizar marcha atras
-        # =========================================================
+            fitness -= 0.2
 
-        if left_speed < 0 and right_speed < 0:
-            fitness -= 0.1
-    
         # =========================================================
         # Penalizar colisoes
         # =========================================================
-    
+
         if self.collision:
-            fitness -= 2.0
-    
+            fitness -= 5
+
         return fitness
 
     # ------------------------------------------------------------
@@ -945,10 +940,9 @@ class Evolution:
     def create_population(self):
         population = []
         while len(population) < POPULATION_SIZE:
-            genome = np.random.uniform(-RANGE,RANGE,self.genome_size)
+            genome = np.random.uniform(-RANGE, RANGE, self.genome_size)
             population.append(genome)
         return population
-
 
     # ------------------------------------------------------------
     # Individual evaluation
@@ -1028,7 +1022,7 @@ class Evolution:
             ),
 
             "trajectory": best_trajectory,
-            "obstacles" : best_obstacles,
+            "obstacles": best_obstacles,
 
             "collision_count": (
                     total_collision_count
@@ -1203,13 +1197,11 @@ class Evolution:
             json.dump(data, f, indent=4)
 
 
-
 # ============================================================
 # Test best individual
 # ============================================================
 
 def test_best_individual(controller_class):
-
     folder = "results/best_individuals"
 
     matching_files = []
@@ -1272,6 +1264,7 @@ def test_best_individual(controller_class):
     while True:
         evolution.runStep(active_controller)
 
+
 # ============================================================
 # Test best from generation
 # ============================================================
@@ -1280,7 +1273,6 @@ def test_generation(
         controller_class,
         generation,
 ):
-
     # =========================================================
     # Carrega o ficheiro mais recente do controlador
     # =========================================================
@@ -1361,13 +1353,11 @@ def test_generation(
         evolution.runStep(active_controller)
 
 
-
 # ============================================================
 # Main
 # ============================================================
 
 def main():
-
     if MODE == "train":
 
         evolution = Evolution(CONTROLLER_CLASS)
