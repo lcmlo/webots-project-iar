@@ -21,14 +21,14 @@ from controllers import (
 TIME_STEP = 6.4
 
 POPULATION_SIZE = 30
-PARENTS_KEEP = 10
+PARENTS_KEEP = 5
 GENERATIONS = 50
 
-MUTATION_RATE = 0.1
+MUTATION_RATE = 0.15
 MUTATION_SIZE = 0.1
 
-EVALUATION_TIME = 60
-EVALUATION_RUNS = 1
+EVALUATION_TIME = 100
+EVALUATION_RUNS = 3
 
 RANGE = 5
 MAX_SPEED = 9
@@ -41,28 +41,27 @@ MIN_IMPROVEMENT_PERCENT = 0.005
 # usar o numero da seed do treino
 # para averiguar se aprendeu mesmo deixar random ou None
 SEED = random.randint(0, 1_000_000)
-# SEED = 870207
+#SEED = 1001
 # SEED = None
 
 TOURNAMENT_SIZE = 3
 K_POINT_CROSSOVER = 1
 
 # Buffer de celulas ja visitadas na linha
-LINE_BUFFER_SIZE = 30
-GLOBAL_BUFFER_SIZE = 50
+LINE_BUFFER_SIZE = 120 # 6m de celulas de 5 cm
 CELL_SIZE = 0.05
 
-# CONTROLLER_CLASS = BraitenbergController
-# CONTROLLER_CLASS = SimpleANNController
+#CONTROLLER_CLASS = BraitenbergController
+#CONTROLLER_CLASS = SimpleANNController
 CONTROLLER_CLASS = AdvancedANNController
 
 MODE = "train"
-# MODE = "test"
+#MODE = "test"
 
 # testar o melhor de uma geracao especifica do ultimo controlador testado
-# MODE = "test_generation"
+#MODE = "test_generation"
 # so usado se MODE = "test_generation"
-GENERATION_TO_TEST = 19
+GENERATION_TO_TEST = 47
 
 # se ambos forem none usa o mais recente para os modes de test
 # se so o nome vai buscar o mais recente desse controller
@@ -86,7 +85,7 @@ def random_orientation(rng):
 
 
 def random_position(rng):
-    spawn_margin = 0.5  # # quanto maior o valor, menor a área de spawn
+    spawn_margin = 0.7  # # quanto maior o valor, menor a área de spawn
 
     min_x = -1.2 + spawn_margin
     max_x = 1.2 - spawn_margin
@@ -98,7 +97,7 @@ def random_position(rng):
     y = rng.uniform(min_y, max_y)
 
     # pequena altura acima do chão
-    z = 0.02
+    z = 0.001
 
     return [x, y, z]
 
@@ -286,10 +285,30 @@ class Evolution:
             size_x,
             size_y,
             existing_obstacles,
-            relax_factor,
     ):
 
         obstacle_radius = max(size_x, size_y) * 0.5
+
+        # =========================================================
+        # evitar spawn em cima do robot
+        # =========================================================
+
+        spawn_x = self.current_spawn_translation[0]
+        spawn_y = self.current_spawn_translation[1]
+
+        robot_radius = 0.12
+
+        spawn_distance = math.dist(
+            (x, y),
+            (spawn_x, spawn_y)
+        )
+
+        if spawn_distance < (
+                obstacle_radius
+                + robot_radius
+                + 0.08
+        ):
+            return False
 
         # =========================================================
         # evitar paredes exteriores
@@ -334,10 +353,7 @@ class Evolution:
         # distancia minima à linha
         # =========================================================
 
-        line_clearance = (
-                0.13
-                * (1.0 - relax_factor * 0.5)
-        )
+        line_clearance = 0.16
 
         distance_to_track = self.point_to_track_distance(x, y)
 
@@ -349,33 +365,10 @@ class Evolution:
             return False
 
         # =========================================================
-        # distancia minima ao spawn
-        # =========================================================
-
-        spawn_clearance = (
-                0.20
-                * (1.0 - relax_factor * 0.5)
-        )
-
-        spawn_distance = math.dist(
-            (x, y),
-            (
-                self.current_spawn_translation[0],
-                self.current_spawn_translation[1]
-            )
-        )
-
-        if spawn_distance < spawn_clearance:
-            return False
-
-        # =========================================================
         # distancia minima entre obstaculos
         # =========================================================
 
-        obstacle_min_distance = (
-                0.16
-                * (1.0 - relax_factor * 0.4)
-        )
+        obstacle_min_distance = 0.22
 
         for other_x, other_y, other_radius in existing_obstacles:
 
@@ -422,9 +415,120 @@ class Evolution:
 
         self.current_obstacles = []
 
-        obstacle_count = self.spawn_rng.integers(4, 11)
+        # =========================================================
+        # anel inicial random de obstaculos perto do spawn
+        # para evitar saidas faceis
+        # =========================================================
 
         existing_obstacles = []
+
+        spawn_x = self.current_spawn_translation[0]
+        spawn_y = self.current_spawn_translation[1]
+
+        ring_obstacle_count = self.spawn_rng.integers(4, 7)
+
+        for i in range(ring_obstacle_count):
+
+            placed = False
+            attempts = 0
+
+            while not placed and attempts < 200:
+
+                attempts += 1
+
+                angle = self.spawn_rng.uniform(
+                    0,
+                    2 * np.pi
+                )
+
+                distance = self.spawn_rng.uniform(
+                    0.30,
+                    0.50
+                )
+
+                x = spawn_x + math.cos(angle) * distance
+                y = spawn_y + math.sin(angle) * distance
+
+                size_x = self.spawn_rng.uniform(0.10, 0.20)
+                size_y = self.spawn_rng.uniform(0.10, 0.20)
+
+                obstacle_radius = max(size_x, size_y) * 0.5
+
+                valid = self.is_valid_obstacle_position(
+                    x,
+                    y,
+                    size_x,
+                    size_y,
+                    existing_obstacles,
+                )
+
+                if not valid:
+                    continue
+
+                rotation = self.spawn_rng.uniform(
+                    0,
+                    2 * np.pi
+                )
+
+                obstacle_def = f"OBSTACLE_RING_{i}"
+
+                obstacle_string = f"""
+                DEF {obstacle_def} Solid {{
+                  translation {x} {y} 0.1
+                  rotation 0 0 1 {rotation}
+
+                  children [
+                    Shape {{
+                      appearance Appearance {{
+                        material Material {{
+                          diffuseColor 1 1 1
+                        }}
+                      }}
+
+                      geometry Box {{
+                        size {size_x} {size_y} 0.2
+                      }}
+                    }}
+                  ]
+
+                  boundingObject Box {{
+                    size {size_x} {size_y} 0.2
+                  }}
+
+                  physics Physics {{
+                    density 1000
+                  }}
+                }}
+                """
+
+                self.children_field.importMFNodeFromString(
+                    -1,
+                    obstacle_string
+                )
+
+                existing_obstacles.append(
+                    (
+                        x,
+                        y,
+                        obstacle_radius,
+                    )
+                )
+
+                self.obstacle_defs.append(
+                    obstacle_def
+                )
+
+                self.current_obstacles.append({
+                    "x": x,
+                    "y": y,
+                    "size_x": size_x,
+                    "size_y": size_y,
+                    "rotation": rotation,
+                })
+
+                placed = True
+
+        obstacle_count = self.spawn_rng.integers(4, 9)
 
         for i in range(obstacle_count):
 
@@ -460,7 +564,6 @@ class Evolution:
                     size_x,
                     size_y,
                     existing_obstacles,
-                    relax_factor,
                 )
 
                 if not valid:
@@ -642,6 +745,13 @@ class Evolution:
                 self.spawn_rng
             )
 
+        # parar motores
+        self.left_motor.setVelocity(0)
+        self.right_motor.setVelocity(0)
+
+        self.supervisor.step(self.timestep)
+
+        # reposicionar
         self.rotation_field.setSFRotation(
             self.current_spawn_rotation
         )
@@ -650,18 +760,18 @@ class Evolution:
             self.current_spawn_translation
         )
 
+        # reset fisica
         self.robot_node.resetPhysics()
 
-        self.left_motor.setVelocity(0)
-        self.right_motor.setVelocity(0)
+        # deixar estabilizar
+        for _ in range(3):
+            self.supervisor.step(self.timestep)
 
         self.collision = False
         self.collision_count = 0
         self.time_on_line = 0
         self.__n = 0
         self.total_distance = 0.0
-
-        self.supervisor.step(self.timestep)
 
         self.prev_position = self.robot_node.getPosition()
 
@@ -736,34 +846,33 @@ class Evolution:
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
 
-        # checkar se ja passou aqui recentemente para poder penalizar
-        line_revisited = False
+        sensors_on_line = (
+                int(not ground_sensor_left)
+                +
+                int(not ground_sensor_right)
+        )
+
+        # ver se esta a revisitar a seccao da linha
         position_cell = self.get_position_cell(current_position)
+        line_revisited = (position_cell in self.line_recent_positions)
 
-        global_revisited = (position_cell in self.global_recent_positions)
-        if not global_revisited:
-            self.global_recent_positions[position_cell] = True
+        if sensors_on_line >= 1 and not line_revisited: #atualizar o buffer
+            self.line_recent_positions[position_cell] = True
 
-            if len(self.global_recent_positions) > GLOBAL_BUFFER_SIZE:
-                oldest_position = next(iter(self.global_recent_positions))
-                del self.global_recent_positions[oldest_position]
+            if len(self.line_recent_positions) > LINE_BUFFER_SIZE: #abrir espaco se buffer cheio
+                oldest_position = next(iter(self.line_recent_positions))
+                del self.line_recent_positions[oldest_position]
 
-        if not ground_sensor_left and not ground_sensor_right:  # esta na linha
+        if sensors_on_line == 2: #contar distancia so com os dois sensores
             self.total_distance += step_distance
             self.time_on_line += 1
-
-            line_revisited = (position_cell in self.line_recent_positions)
-            if not line_revisited:
-                self.line_recent_positions[position_cell] = True
-
-                if len(self.line_recent_positions) > LINE_BUFFER_SIZE:  # abrir espaco no buffer quando atinge max size
-                    oldest_position = next(iter(self.line_recent_positions))
-                    del self.line_recent_positions[oldest_position]
+        else:
+            self.time_on_line = 0 # TODO acrescentei maybe remover se nao resultar
 
         self.prev_position = current_position
         self.__n += 1
 
-        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, line_revisited, global_revisited)
+        return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, line_revisited)
 
     # ------------------------------------------------------------
     # Run evolution
@@ -866,9 +975,16 @@ class Evolution:
                 )
                 break
 
-            parents = self.tournament_selection(population, fitnesses, )
+            selected_parents = self.tournament_selection(
+                population,
+                fitnesses,
+            )
 
-            population = self.create_next_generation(parents)
+            population = self.create_next_generation(
+                population,
+                fitnesses,
+                selected_parents,
+            )
 
         print("\nEvolution finished.")
         print(f"Best global fitness: {self.best_global_fitness:.2f}")
@@ -899,16 +1015,24 @@ class Evolution:
             left_speed,
             right_speed,
             line_revisited,
-            global_revisited
     ):
         fitness = 0.0
 
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
 
-        on_line = (
-                not ground_sensor_left and
-                not ground_sensor_right
+        # on_line = (
+        #         not ground_sensor_left and
+        #         not ground_sensor_right
+        # )
+
+        ground_left_raw = sensors["ground_left_raw"]
+        ground_right_raw = sensors["ground_right_raw"]
+
+        sensors_on_line = (
+                int(not ground_sensor_left)
+                +
+                int(not ground_sensor_right)
         )
 
         # =========================================================
@@ -916,13 +1040,62 @@ class Evolution:
         # distancia percorrida na linha em locais novos
         # =========================================================
 
-        if on_line:
+        # if on_line:
+        #     if line_revisited:
+        #         fitness -= 0.1
+        #     else:
+        #         fitness += step_distance * 1000.0
+        # else:
+        #     fitness -= 0.2
+
+        if sensors_on_line == 2:
+
+            line_progress_reward = step_distance * 600
+
+            line_stability_bonus = min(
+                self.time_on_line / 50,
+                4
+            )
+
+            fitness += (
+                    line_progress_reward
+                    +
+                    line_stability_bonus
+            )
+
             if line_revisited:
-                fitness -= 0.1
-            else:
-                fitness += step_distance * 1000.0
+                fitness -= step_distance * 400
+
+        elif sensors_on_line == 1:
+            fitness += step_distance * 25
+            fitness -= abs(ground_left_raw - ground_right_raw) / 1023.0 * 3
+            if line_revisited:
+                fitness -= step_distance * 20
+        
         else:
+        
             fitness -= 0.2
+
+        # =========================================================
+        # Penalizar rodas a mover rapido mas distancia percorrida baixa
+        # para tentar combater estar de marcha atras contra um obstaculo
+        # ou estar as rodas
+        # =========================================================
+        wheel_activity = (
+                                 abs(left_speed)
+                                 +
+                                 abs(right_speed)
+                         ) / (2 * MAX_SPEED)
+        movement_efficiency = (
+                step_distance
+                /
+                max(wheel_activity, 0.001)
+        )
+        if wheel_activity > 0.3:
+            fitness -= max(
+                0,
+                0.002 - movement_efficiency
+            ) * 60
 
         # =========================================================
         # Penalizar colisoes
@@ -1039,23 +1212,50 @@ class Evolution:
     # Next generation
     # ------------------------------------------------------------
 
-    def create_next_generation(self, parents):
+    def create_next_generation(
+            self,
+            population,
+            fitnesses,
+            selected_parents,
+    ):
 
         next_population = []
 
-        # Elitism
-        for parent in parents:
-            next_population.append(parent.copy())
+        # =========================================================
+        # Real elitism
+        # =========================================================
+
+        elite_indices = np.argsort(fitnesses)[-PARENTS_KEEP:]
+
+        for index in elite_indices:
+            next_population.append(
+                population[index].copy()
+            )
+
+        # =========================================================
+        # Remaining population
+        # =========================================================
 
         while len(next_population) < POPULATION_SIZE:
-            parent1, parent2 = random.sample(parents, 2)
+            parent1, parent2 = random.sample(
+                selected_parents,
+                2
+            )
 
-            child = self.crossover(parent1, parent2)
+            child = self.crossover(
+                parent1,
+                parent2
+            )
+
             child = self.mutate(child)
 
             next_population.append(child)
 
         return next_population
+
+    # ------------------------------------------------------------
+    # Tournament selection
+    # ------------------------------------------------------------
 
     def tournament_selection(
             self,
@@ -1065,7 +1265,7 @@ class Evolution:
 
         selected_parents = []
 
-        for _ in range(PARENTS_KEEP):
+        while len(selected_parents) < POPULATION_SIZE:
             tournament_indices = random.sample(
                 range(len(population)),
                 TOURNAMENT_SIZE
@@ -1077,7 +1277,7 @@ class Evolution:
             )
 
             selected_parents.append(
-                population[best_index].copy()
+                population[best_index]
             )
 
         return selected_parents
@@ -1358,6 +1558,11 @@ def test_generation(
 # ============================================================
 
 def main():
+
+    if SEED is not None:
+        random.seed(SEED)
+        np.random.seed(SEED)
+        
     if MODE == "train":
 
         evolution = Evolution(CONTROLLER_CLASS)
