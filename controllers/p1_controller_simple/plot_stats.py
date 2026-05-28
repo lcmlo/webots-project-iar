@@ -6,20 +6,379 @@ from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
 
+#MODE = "latest"
+# MODE = "specific"
+MODE = "compare_recent"
+
+TEST_CONTROLLER_NAME = None
+TEST_TIMESTAMP = None
+
+COMPARE_LAST_N = 4
 
 def get_latest_stats_file():
 
-    stats_folder = Path("results/training_stats")
+    return str(
+        get_matching_stats_files()[0]
+    )
 
-    files = list(stats_folder.glob("*.json"))
+def get_matching_stats_files():
 
-    if not files:
-        raise FileNotFoundError("No stats files found.")
+    stats_folder = Path(
+        "results/training_stats"
+    )
 
-    latest_file = max(files, key=lambda f: f.stat().st_mtime)
+    files = list(
+        stats_folder.glob("*.json")
+    )
 
-    return str(latest_file)
+    matching_files = []
 
+    for f in files:
+
+        filename = f.name
+
+        if (
+                TEST_CONTROLLER_NAME is not None
+                and
+                TEST_CONTROLLER_NAME not in filename
+        ):
+            continue
+
+        if (
+                TEST_TIMESTAMP is not None
+                and
+                TEST_TIMESTAMP not in filename
+        ):
+            continue
+
+        matching_files.append(f)
+
+    if not matching_files:
+        raise FileNotFoundError(
+            "No matching stats files found."
+        )
+
+    matching_files.sort(
+        key=lambda f: f.stat().st_mtime,
+        reverse=True
+    )
+
+    return matching_files
+
+def compare_recent_experiments():
+
+    compare_recent_fitness()
+
+    compare_recent_distances()
+
+    compare_recent_trajectories()
+
+def compare_recent_fitness():
+
+    files = get_matching_stats_files()
+
+    files = files[:COMPARE_LAST_N]
+
+    plt.figure(figsize=(12, 8))
+
+    for file in reversed(files):
+
+        stats, config, timestamp = load_stats(file)
+
+        generations = [
+            s["generation"]
+            for s in stats
+        ]
+
+        best_fitness = [
+            s["best_fitness"]
+            for s in stats
+        ]
+
+        best_generation_data = max(
+            stats,
+            key=lambda s: s["best_fitness"]
+        )
+
+        best_gen = best_generation_data["generation"]
+
+        total_gens = stats[-1]["generation"]
+
+        label = f"{config['controller']}_{timestamp}"
+
+        if "layers" in config:
+            label += (
+                f" | {config['layers']}"
+            )
+
+        label += (
+            f" | BestGen "
+            f"{best_gen}/{total_gens}"
+        )
+
+        plt.plot(
+            generations,
+            best_fitness,
+            linewidth=2,
+            label=label
+        )
+
+    plt.xlabel("Generation")
+
+    plt.ylabel("Best Fitness")
+
+    plt.title(
+        f"Comparison of Last "
+        f"{COMPARE_LAST_N} Experiments"
+    )
+
+    plt.grid(True)
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.show()
+
+def compare_recent_distances():
+
+    files = get_matching_stats_files()
+
+    files = files[:COMPARE_LAST_N]
+
+    plt.figure(figsize=(12, 8))
+
+    for file in reversed(files):
+
+        stats, config, timestamp = load_stats(file)
+
+        generations = [
+            s["generation"]
+            for s in stats
+        ]
+
+        best_distance = [
+            s["best_distance"]
+            for s in stats
+        ]
+
+        best_generation_data = max(
+            stats,
+            key=lambda s: s["best_fitness"]
+        )
+
+        best_gen = best_generation_data["generation"]
+
+        total_gens = stats[-1]["generation"]
+
+        label = f"{config['controller']}_{timestamp}"
+
+        if "layers" in config:
+            label += (
+                f" | Layers {config['layers']}"
+            )
+
+        label += (
+            f" | BestGen "
+            f"{best_gen}/{total_gens}"
+        )
+
+        plt.plot(
+            generations,
+            best_distance,
+            linewidth=2,
+            label=label
+        )
+
+    plt.xlabel("Generation")
+
+    plt.ylabel("Best Distance")
+
+    plt.title(
+        f"Distance Comparison "
+        f"({COMPARE_LAST_N} Runs)"
+    )
+
+    plt.grid(True)
+
+    plt.legend()
+
+    plt.tight_layout()
+
+    plt.show()
+
+def compare_recent_trajectories():
+
+    files = get_matching_stats_files()
+
+    files = files[:COMPARE_LAST_N]
+
+    cols = 2
+
+    rows = int(
+        np.ceil(len(files) / cols)
+    )
+
+    fig, axes = plt.subplots(
+        rows,
+        cols,
+        figsize=(14, 7 * rows)
+    )
+
+    axes = np.array(axes).flatten()
+
+    for ax, file in zip(axes, reversed(files)):
+
+        stats, config, timestamp = load_stats(file)
+
+        best_generation = max(
+            stats,
+            key=lambda s: s["best_fitness"]
+        )
+
+        trajectory = best_generation.get(
+            "best_trajectory",
+            []
+        )
+
+        if not trajectory:
+            ax.axis("off")
+            continue
+
+        xs = [p[0] for p in trajectory]
+        ys = [p[1] for p in trajectory]
+
+        # =====================================================
+        # Arena
+        # =====================================================
+
+        addIdealPath(ax)
+
+        obstacles = best_generation.get(
+            "obstacles",
+            []
+        )
+
+        addObstacles(
+            ax,
+            obstacles
+        )
+
+        # =====================================================
+        # Trajectory
+        # =====================================================
+
+        ax.plot(
+            xs,
+            ys,
+            linewidth=3,
+            alpha=0.9,
+        )
+
+        # start point
+        ax.scatter(
+            xs[0],
+            ys[0],
+            s=80,
+            marker="o",
+            zorder=5
+        )
+
+        # end point
+        ax.scatter(
+            xs[-1],
+            ys[-1],
+            s=80,
+            marker="x",
+            linewidths=2,
+            zorder=5
+        )
+
+        # =====================================================
+        # Labels
+        # =====================================================
+
+        label = config["controller"]
+
+        if "layers" in config:
+            label += (
+                f"\nLayers: "
+                f"{config['layers']}"
+            )
+
+        label = (
+            f"{config['controller']}_{timestamp}"
+        )
+
+        if "layers" in config:
+            label += (
+                f"\nLayers: "
+                f"{config['layers']}"
+            )
+
+        total_gens = stats[-1]["generation"]
+
+        label += (
+            f"\nBest Gen: "
+            f"{best_generation['generation']}"
+            f"/{total_gens}"
+        )
+
+        label += (
+            f"\nFitness: "
+            f"{best_generation['best_fitness']:.0f}"
+        )
+
+        label += (
+            f"\nDistance: "
+            f"{best_generation['best_distance']:.2f}"
+        )
+
+        population_size = config.get(
+            "population_size",
+            "N/A"
+        )
+
+        label += (
+            f"\nPop size: "
+            f"{population_size}"
+        )
+
+        evaluation_time = config.get(
+            "evaluation_time",
+            "N/A"
+        )
+
+        label += (
+            f"\nEval time: "
+            f"{evaluation_time}"
+        )
+
+        ax.set_title(label)
+
+        # =====================================================
+        # Arena setup
+        # =====================================================
+
+        ax.set_xlim(-1.5, 1.5)
+        ax.set_ylim(-1.5, 1.5)
+
+        ax.set_aspect("equal")
+
+        ax.grid(True)
+
+    # esconder plots vazios
+    for ax in axes[len(files):]:
+        ax.axis("off")
+
+    fig.suptitle(
+        f"Best Trajectories Comparison "
+        f"({COMPARE_LAST_N} Runs)"
+    )
+
+    plt.tight_layout()
+
+    plt.show()
 
 def load_stats(filename):
 
@@ -53,7 +412,7 @@ def create_trajectory_folder(controller_name):
     return folder
 
 
-def plot_fitness(stats, config, plot_folder):
+def plot_fitness(stats, config,timestamp, plot_folder):
 
     generations = [s["generation"] for s in stats]
 
@@ -69,7 +428,8 @@ def plot_fitness(stats, config, plot_folder):
     plt.ylabel("Fitness")
 
     plt.title(
-        f"{config['controller']} Fitness Convergence"
+        f"{config['controller']}_{timestamp} Fitness Convergence "
+        f"{timestamp}"
     )
 
     plt.legend()
@@ -82,7 +442,7 @@ def plot_fitness(stats, config, plot_folder):
     plt.show()
 
 
-def plot_distance(stats, config, plot_folder):
+def plot_distance(stats, config,timestamp, plot_folder):
 
     generations = [s["generation"] for s in stats]
 
@@ -98,7 +458,7 @@ def plot_distance(stats, config, plot_folder):
     plt.ylabel("Distance (meters)")
 
     plt.title(
-        f"{config['controller']} Distance Evolution"
+        f"{config['controller']}_{timestamp} Distance Evolution "
     )
 
     plt.legend()
@@ -113,6 +473,7 @@ def plot_distance(stats, config, plot_folder):
 def plot_trajectory(
         stats,
         config,
+        timestamp,
         plot_folder,
 ):
 
@@ -201,8 +562,8 @@ def plot_trajectory(
     plt.ylabel("Arena Y Position")
 
     plt.title(
-        f"{config['controller']} - "
-        f"Best Overall Trajectory"
+        f"{config['controller']}_{timestamp} - "
+        f"Best Overall Trajectory "
     )
 
     # =========================================================
@@ -246,6 +607,7 @@ def plot_trajectory(
 def plot_trajectory_grid(
         stats,
         config,
+        timestamp,
         plot_folder,
 ):
 
@@ -382,8 +744,8 @@ def plot_trajectory_grid(
         ax.axis("off")
 
     fig.suptitle(
-        f"{config['controller']} "
-        f"Trajectory Evolution"
+        f"{config['controller']}_{timestamp} "
+        f"Trajectory Evolution "
     )
 
     plt.subplots_adjust(
@@ -492,28 +854,52 @@ def addObstacles(ax, obstacles):
 
 def main():
 
-    stats_file = get_latest_stats_file()
+    if MODE == "latest":
 
-    stats, config, timestamp = load_stats(stats_file)
+        stats_file = (
+            get_latest_stats_file()
+        )
 
-    plot_folder = create_plot_folder(
-        config["controller"],
-        timestamp,
-    )
+        stats, config, timestamp = (
+            load_stats(stats_file)
+        )
 
-    plot_fitness(stats, config, plot_folder)
+        plot_folder = create_plot_folder(
+            config["controller"],
+            timestamp,
+        )
 
-    plot_distance(stats, config, plot_folder)
+        plot_fitness(
+            stats,
+            config,
+            timestamp,
+            plot_folder,
+        )
 
-    plot_trajectory(stats, config, plot_folder)
+        plot_distance(
+            stats,
+            config,
+            timestamp,
+            plot_folder,
+        )
 
-    plot_trajectory_grid(
-        stats,
-        config,
-        plot_folder,
-    )
+        plot_trajectory(
+            stats,
+            config,
+            timestamp,
+            plot_folder,
+        )
 
-    print(f"\nPlots saved to: {plot_folder}")
+        plot_trajectory_grid(
+            stats,
+            config,
+            timestamp,
+            plot_folder,
+        )
+
+    elif MODE == "compare_recent":
+
+        compare_recent_experiments()
 
 
 if __name__ == "__main__":

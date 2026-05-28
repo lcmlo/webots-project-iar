@@ -1346,7 +1346,7 @@ class Evolution:
     # ------------------------------------------------------------
     def get_experiment_config(self):
 
-        return {
+        config = {
             "controller": self.controller_class.__name__,
             "population_size": POPULATION_SIZE,
             "parents_keep": PARENTS_KEEP,
@@ -1361,6 +1361,16 @@ class Evolution:
             "k_point_crossover": K_POINT_CROSSOVER,
             "tournament_size": TOURNAMENT_SIZE,
         }
+
+        if hasattr(
+                self.controller_class,
+                "LAYERS"
+        ):
+            config["layers"] = (
+                self.controller_class.LAYERS
+            )
+
+        return config
 
     # ------------------------------------------------------------
     # Save best individual
