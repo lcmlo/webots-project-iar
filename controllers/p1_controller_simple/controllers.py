@@ -64,11 +64,11 @@ class BraitenbergController(BaseController):
 
         p1e, p2e, p3e, p1d, p2d, p3d = self.genome
 
-        left_speed = (p1e * se) + (p2e * sd) + p3e
-        right_speed = (p1d * se) + (p2d * sd) + p3d
+        left_output = (p1e * se) + (p2e * sd) + p3e
+        right_output = (p1d * se) + (p2d * sd) + p3d
 
-        left_speed = self._clip_speed(left_speed)
-        right_speed = self._clip_speed(right_speed)
+        left_speed = np.tanh(left_output) * self.MAX_SPEED
+        right_speed = np.tanh(right_output) * self.MAX_SPEED
 
         return left_speed, right_speed
 
@@ -198,7 +198,7 @@ class SimpleANNController(BaseController):
 
 class AdvancedANNController(BaseController):
 
-    LAYERS = [5, 32, 16, 2]
+    LAYERS = [5, 64, 32, 2]
 
     HIDDEN_ACTIVATION = np.tanh
     OUTPUT_ACTIVATION = np.tanh

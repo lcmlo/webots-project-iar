@@ -1,7 +1,7 @@
 import json
 import math
 import random
-
+from collections import OrderedDict
 import numpy as np
 from controller import Supervisor
 from pathlib import Path
@@ -25,53 +25,56 @@ PARENTS_KEEP = 5
 GENERATIONS = 50
 
 MUTATION_RATE = 0.15
-MUTATION_SIZE = 0.1
+MUTATION_SIZE = 0.05
 
 EVALUATION_TIME = 100
 EVALUATION_RUNS = 3
 
+TOURNAMENT_SIZE = 3
+K_POINT_CROSSOVER = 3
+
 RANGE = 5
 MAX_SPEED = 9
 
-EARLY_STOPPING = True
-STAGNATION_LIMIT = 10
-MIN_IMPROVEMENT_PERCENT = 0.005
-
-# para reproduzir exatamente as condicoes de treino
-# usar o numero da seed do treino
-# para averiguar se aprendeu mesmo deixar random ou None
-SEED = random.randint(0, 1_000_000)
-#SEED = 1001
-# SEED = None
-
-TOURNAMENT_SIZE = 3
-K_POINT_CROSSOVER = 1
-
 # Buffer de celulas ja visitadas na linha
-LINE_BUFFER_SIZE = 120 # 6m de celulas de 5 cm
-CELL_SIZE = 0.05
+LINE_BUFFER_SIZE = 600 # 6m de celulas
+CELL_SIZE = 0.01
 
 #CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
 CONTROLLER_CLASS = AdvancedANNController
 
-MODE = "train"
-#MODE = "test"
+# para reproduzir exatamente as condicoes de treino
+# usar o numero da seed do treino
+# para averiguar se aprendeu mesmo deixar random ou None
+SEED = random.randint(0, 1_000_000)
+#SEED = 846826
+# SEED = None
 
-# testar o melhor de uma geracao especifica do ultimo controlador testado
-#MODE = "test_generation"
-# so usado se MODE = "test_generation"
-GENERATION_TO_TEST = 47
+EARLY_STOPPING = True
+STAGNATION_LIMIT = 10
+MIN_IMPROVEMENT_PERCENT = 0.005
+
+#MODE = "train"
+
+# ============================================================
+# TESTS
+# ============================================================
+MODE = "test"
+
+#MODE = "test_generation" # testar o melhor de uma geracao especifica do ultimo controlador testado
+#GENERATION_TO_TEST = 47 # so usado se MODE = "test_generation"
+
+#Para as metricas dos testes, esta em metros
+SUCCESS_DISTANCE = 2.0
 
 # se ambos forem none usa o mais recente para os modes de test
 # se so o nome vai buscar o mais recente desse controller
 # so o timestamp vai buscar esse especifico
-TEST_CONTROLLER_NAME = None
+#TEST_CONTROLLER_NAME = None
 TEST_TIMESTAMP = None
-
-
-# TEST_CONTROLLER_NAME = "AdvancedANNController"
-# TEST_TIMESTAMP = "20260516_215621"
+TEST_CONTROLLER_NAME = "AdvancedANNController"
+#TEST_TIMESTAMP = "20260528_123722"
 
 # ============================================================
 # Utility functions
@@ -119,9 +122,20 @@ class Evolution:
         self.collision = False
         self.collision_count = 0
         self.time_on_line = 0
+        self.reverse_steps = 0
+        self.has_found_line = False
+        self.steps_without_line = 0
+        self.same_cell_steps = 0
+        self.previous_line_cell = None
 
-        self.line_recent_positions = {}  # guarda so ultimas posicoes na linha
-        self.global_recent_positions = {}  # guarda posicoes recentes em qualquer sitio
+        self.debug_distance_reward = 0.0
+        self.debug_revisit_penalty = 0.0
+        self.debug_off_line_penalty = 0.0
+        self.debug_collision_penalty = 0.0
+        self.debug_lost_line_penalty = 0.0
+
+
+        self.line_recent_positions = OrderedDict()  # guarda so ultimas posicoes na linha
         self.position_cell_size = CELL_SIZE
 
         self.best_global_fitness = -float("inf")
@@ -213,6 +227,100 @@ class Evolution:
         )
         os.makedirs("results/best_individuals", exist_ok=True)
         os.makedirs("results/training_stats", exist_ok=True)
+
+    # ============================================================
+    # TEST BEST GENOME
+    # ============================================================
+    def evaluate_genome_benchmark(
+            self,
+            genome,
+            episodes=30,
+    ):
+        results = []
+
+        for episode in range(episodes):
+
+            self.reset(new_spawn=True)
+
+            self.remove_obstacles()
+            self.generate_obstacles()
+
+            controller = self.controller_class(genome)
+
+            start_time = self.supervisor.getTime()
+
+            while (
+                    self.supervisor.getTime() - start_time
+                    < EVALUATION_TIME
+            ):
+                self.runStep(controller)
+
+            results.append({
+                "distance": self.total_distance,
+                "collisions": self.collision_count,
+                "time_on_line": self.time_on_line,
+            })
+
+        distances = [
+            r["distance"]
+            for r in results
+        ]
+        distances_sorted = sorted(distances)
+
+        collisions = [
+            r["collisions"]
+            for r in results
+        ]
+
+        successful_runs = sum(
+            d >= SUCCESS_DISTANCE
+            for d in distances
+        )
+
+        success_rate = (
+                               successful_runs
+                               / episodes
+                       ) * 100
+
+        print("\n========== BENCHMARK ==========")
+        print(f"Episodes: {episodes}")
+
+        print(
+            f"Distance Avg: {np.mean(distances):.2f}"
+        )
+
+        print(
+            f"Median Distance: "
+            f"{np.median(distances):.2f}"
+        )
+
+        print(
+            f"Distance Std: {np.std(distances):.2f}"
+        )
+
+        print(
+            f"Distance Max: {np.max(distances):.2f}"
+        )
+
+        print(
+            f"Distance Min: {np.min(distances):.2f}"
+        )
+
+        print(
+            f"Collisions Avg: {np.mean(collisions):.2f}"
+        )
+
+        print(
+            f"Successful Runs: "
+            f"{successful_runs}/{episodes}"
+        )
+
+        print(
+            f"Success Rate (>={SUCCESS_DISTANCE}m): "
+            f"{success_rate:.1f}%"
+        )
+
+
 
     # ============================================================
     # For controlling novelty on the line
@@ -727,7 +835,6 @@ class Evolution:
             spawn_translation=None,
     ):
         self.line_recent_positions.clear()
-        self.global_recent_positions.clear()
 
         if spawn_rotation is not None:
             self.current_spawn_rotation = spawn_rotation
@@ -767,11 +874,22 @@ class Evolution:
         for _ in range(3):
             self.supervisor.step(self.timestep)
 
+        self.has_found_line = False
+        self.steps_without_line = 0
+
         self.collision = False
         self.collision_count = 0
         self.time_on_line = 0
         self.__n = 0
         self.total_distance = 0.0
+        self.same_cell_steps = 0
+        self.previous_line_cell = None
+
+        self.debug_distance_reward = 0.0
+        self.debug_revisit_penalty = 0.0
+        self.debug_off_line_penalty = 0.0
+        self.debug_collision_penalty = 0.0
+        self.debug_lost_line_penalty = 0
 
         self.prev_position = self.robot_node.getPosition()
 
@@ -852,25 +970,49 @@ class Evolution:
                 int(not ground_sensor_right)
         )
 
+        if sensors_on_line >= 1:
+            self.has_found_line = True
+            self.steps_without_line = 0
+        else:
+            if self.has_found_line:
+                self.steps_without_line += 1
+
         # ver se esta a revisitar a seccao da linha
         position_cell = self.get_position_cell(current_position)
-        line_revisited = (position_cell in self.line_recent_positions)
+        line_revisited = (
+                position_cell in self.line_recent_positions
+                and
+                position_cell != self.previous_line_cell
+        )
 
-        if sensors_on_line >= 1 and not line_revisited: #atualizar o buffer
+        if sensors_on_line >= 1 and not line_revisited:
+
             self.line_recent_positions[position_cell] = True
 
-            if len(self.line_recent_positions) > LINE_BUFFER_SIZE: #abrir espaco se buffer cheio
-                oldest_position = next(iter(self.line_recent_positions))
-                del self.line_recent_positions[oldest_position]
+            if len(self.line_recent_positions) > LINE_BUFFER_SIZE: # dar pop a pos mais antiga
+                self.line_recent_positions.popitem(last=False)
 
         if sensors_on_line == 2: #contar distancia so com os dois sensores
             self.total_distance += step_distance
             self.time_on_line += 1
+            if position_cell == self.previous_line_cell:
+                self.same_cell_steps += 1
+            else:
+                self.same_cell_steps = 0
+
+            self.previous_line_cell = position_cell
         else:
-            self.time_on_line = 0 # TODO acrescentei maybe remover se nao resultar
+            # self.time_on_line = 0 # se quisermos tempo consecutivo nao total, descomentar
+            self.same_cell_steps = 0
+            self.previous_line_cell = None
 
         self.prev_position = current_position
         self.__n += 1
+
+        if left_speed < -1 and right_speed < -1:
+            self.reverse_steps += 1
+        else:
+            self.reverse_steps = 0
 
         return self.get_step_fitness(sensors, step_distance, left_speed, right_speed, line_revisited)
 
@@ -1021,11 +1163,6 @@ class Evolution:
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
 
-        # on_line = (
-        #         not ground_sensor_left and
-        #         not ground_sensor_right
-        # )
-
         ground_left_raw = sensors["ground_left_raw"]
         ground_right_raw = sensors["ground_right_raw"]
 
@@ -1040,69 +1177,56 @@ class Evolution:
         # distancia percorrida na linha em locais novos
         # =========================================================
 
-        # if on_line:
-        #     if line_revisited:
-        #         fitness -= 0.1
-        #     else:
-        #         fitness += step_distance * 1000.0
-        # else:
-        #     fitness -= 0.2
-
         if sensors_on_line == 2:
-
-            line_progress_reward = step_distance * 600
-
-            line_stability_bonus = min(
-                self.time_on_line / 50,
-                4
-            )
-
-            fitness += (
-                    line_progress_reward
-                    +
-                    line_stability_bonus
-            )
-
             if line_revisited:
-                fitness -= step_distance * 400
+                penalty = step_distance * 650 + 0.1
+                fitness -= penalty
+                self.debug_revisit_penalty += penalty
+            else:
+                line_progress_reward = step_distance * 600
+                fitness += line_progress_reward
+                self.debug_distance_reward += line_progress_reward
 
         elif sensors_on_line == 1:
-            fitness += step_distance * 25
-            fitness -= abs(ground_left_raw - ground_right_raw) / 1023.0 * 3
             if line_revisited:
-                fitness -= step_distance * 20
-        
+                penalty = step_distance * 60 + 0.01
+                fitness -= penalty
+                self.debug_revisit_penalty += penalty
+            else:
+                fitness += step_distance * 50
+                fitness -= abs(ground_left_raw - ground_right_raw) / 1023.0
+
         else:
-        
-            fitness -= 0.2
+            fitness -= 0.5
+            self.debug_off_line_penalty += 0.5
+
+        if self.same_cell_steps > 40: #40 x 64ms = 2.56s, estar preso numa celula durante 2.56s comeca a penalizar
+            fitness -= min(self.same_cell_steps * 0.002,0.3)
 
         # =========================================================
-        # Penalizar rodas a mover rapido mas distancia percorrida baixa
-        # para tentar combater estar de marcha atras contra um obstaculo
-        # ou estar as rodas
+        # Penalizar perder a pista durante muito tempo apos ja a ter encontrado
         # =========================================================
-        wheel_activity = (
-                                 abs(left_speed)
-                                 +
-                                 abs(right_speed)
-                         ) / (2 * MAX_SPEED)
-        movement_efficiency = (
-                step_distance
-                /
-                max(wheel_activity, 0.001)
-        )
-        if wheel_activity > 0.3:
-            fitness -= max(
-                0,
-                0.002 - movement_efficiency
-            ) * 60
+
+        if self.steps_without_line > 40:
+            lost_line_penalty = min(self.steps_without_line * 0.0003,0.1)
+            fitness -= lost_line_penalty
+            self.debug_lost_line_penalty += lost_line_penalty
+
+        # =========================================================
+        # Penalizar marcha atras prolongada
+        # =========================================================
+
+        if self.reverse_steps > 15:
+            fitness -= 0.5
 
         # =========================================================
         # Penalizar colisoes
         # =========================================================
 
         if self.collision:
-            fitness -= 5
+            fitness -= 1.5
+
+            self.debug_collision_penalty += 1.5
 
         return fitness
 
@@ -1177,6 +1301,17 @@ class Evolution:
             total_distance += self.total_distance
             total_collision_count += self.collision_count
             total_time_on_line += self.time_on_line
+
+            print(
+                f"Fitness={run_fitness:.1f} | "
+                f"DistReward={self.debug_distance_reward:.1f} | "
+                f"RevisitPenalty={self.debug_revisit_penalty:.1f} | "
+                f"OffLinePenalty={self.debug_off_line_penalty:.1f} | "
+                f"CollisionPenalty={self.debug_collision_penalty:.1f} | "
+                f"LostLinePenalty={self.debug_lost_line_penalty:.1f} | "
+                f"Distance={self.total_distance:.2f} | "
+                f"TimeOnLine={self.time_on_line}"
+            )
 
             if run_fitness > best_run_fitness:
                 best_run_fitness = run_fitness
@@ -1469,10 +1604,10 @@ def test_best_individual(controller_class):
     evolution.remove_obstacles()
     evolution.generate_obstacles()
 
-    active_controller = controller_class(genome)
-
-    while True:
-        evolution.runStep(active_controller)
+    evolution.evaluate_genome_benchmark(
+        genome,
+        episodes=30
+    )
 
 
 # ============================================================
@@ -1557,10 +1692,10 @@ def test_generation(
     evolution.remove_obstacles()
     evolution.generate_obstacles()
 
-    active_controller = controller_class(genome)
-
-    while True:
-        evolution.runStep(active_controller)
+    evolution.evaluate_genome_benchmark(
+        genome,
+        episodes=30
+    )
 
 
 # ============================================================

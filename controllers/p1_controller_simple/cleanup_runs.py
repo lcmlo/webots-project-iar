@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 
-MIN_GENERATIONS = 5
+MIN_GENERATIONS = 10
 MIN_DISTANCE = 1.0
 
 stats_folder = Path(

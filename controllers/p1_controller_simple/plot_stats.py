@@ -13,7 +13,7 @@ MODE = "compare_recent"
 TEST_CONTROLLER_NAME = None
 TEST_TIMESTAMP = None
 
-COMPARE_LAST_N = 4
+COMPARE_LAST_N = 3
 
 def get_latest_stats_file():
 
