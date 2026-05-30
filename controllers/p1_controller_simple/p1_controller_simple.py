@@ -20,7 +20,7 @@ from controllers import (
 
 TIME_STEP = 6.4
 
-POPULATION_SIZE = 30
+POPULATION_SIZE = 50
 PARENTS_KEEP = 5
 GENERATIONS = 50
 
@@ -34,27 +34,30 @@ TOURNAMENT_SIZE = 3
 K_POINT_CROSSOVER = 3
 
 RANGE = 5
-MAX_SPEED = 9
+MAX_SPEED = 9.53
 
 # Buffer de celulas ja visitadas na linha
-LINE_BUFFER_SIZE = 600 # 6m de celulas
-CELL_SIZE = 0.01
+LINE_BUFFER_SIZE = 300 # 6m de celulas
+CELL_SIZE = 0.02
 
-#CONTROLLER_CLASS = BraitenbergController
+
+CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-CONTROLLER_CLASS = AdvancedANNController
+#CONTROLLER_CLASS = AdvancedANNController
 
 # para reproduzir exatamente as condicoes de treino
 # usar o numero da seed do treino
 # para averiguar se aprendeu mesmo deixar random ou None
 SEED = random.randint(0, 1_000_000)
-#SEED = 846826
+#SEED = 454733
 # SEED = None
 
 EARLY_STOPPING = True
 STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT_PERCENT = 0.005
 
+#para validar melhor a fitness enquanto treina, metricas por individuo e nao so por geracao
+DEBUG_INDIVIDUALS = False
 #MODE = "train"
 
 # ============================================================
@@ -63,7 +66,7 @@ MIN_IMPROVEMENT_PERCENT = 0.005
 MODE = "test"
 
 #MODE = "test_generation" # testar o melhor de uma geracao especifica do ultimo controlador testado
-#GENERATION_TO_TEST = 47 # so usado se MODE = "test_generation"
+GENERATION_TO_TEST = 47 # so usado se MODE = "test_generation"
 
 #Para as metricas dos testes, esta em metros
 SUCCESS_DISTANCE = 2.0
@@ -73,7 +76,7 @@ SUCCESS_DISTANCE = 2.0
 # so o timestamp vai buscar esse especifico
 #TEST_CONTROLLER_NAME = None
 TEST_TIMESTAMP = None
-TEST_CONTROLLER_NAME = "AdvancedANNController"
+TEST_CONTROLLER_NAME = "BraitenbergController"
 #TEST_TIMESTAMP = "20260528_123722"
 
 # ============================================================
@@ -126,7 +129,8 @@ class Evolution:
         self.has_found_line = False
         self.steps_without_line = 0
         self.same_cell_steps = 0
-        self.previous_line_cell = None
+        self.previous_track_cell = None
+        self.previous_distance_cell = None
 
         self.debug_distance_reward = 0.0
         self.debug_revisit_penalty = 0.0
@@ -137,6 +141,9 @@ class Evolution:
 
         self.line_recent_positions = OrderedDict()  # guarda so ultimas posicoes na linha
         self.position_cell_size = CELL_SIZE
+
+        self.line_cells_visited = 0
+        self.line_cells_revisited = 0
 
         self.best_global_fitness = -float("inf")
         self.best_global_genome = None
@@ -883,13 +890,17 @@ class Evolution:
         self.__n = 0
         self.total_distance = 0.0
         self.same_cell_steps = 0
-        self.previous_line_cell = None
+        self.previous_track_cell = None
+        self.previous_distance_cell = None
 
         self.debug_distance_reward = 0.0
         self.debug_revisit_penalty = 0.0
         self.debug_off_line_penalty = 0.0
         self.debug_collision_penalty = 0.0
         self.debug_lost_line_penalty = 0
+
+        self.line_cells_visited = 0
+        self.line_cells_revisited = 0
 
         self.prev_position = self.robot_node.getPosition()
 
@@ -970,41 +981,76 @@ class Evolution:
                 int(not ground_sensor_right)
         )
 
-        if sensors_on_line >= 1:
+        position_cell = self.get_position_cell(current_position)
+
+        # =========================================================
+        # Line state
+        # =========================================================
+
+        on_line = sensors_on_line >= 1
+        fully_on_line = sensors_on_line == 2
+
+        if on_line:
             self.has_found_line = True
             self.steps_without_line = 0
         else:
             if self.has_found_line:
                 self.steps_without_line += 1
 
-        # ver se esta a revisitar a seccao da linha
-        position_cell = self.get_position_cell(current_position)
-        line_revisited = (
-                position_cell in self.line_recent_positions
-                and
-                position_cell != self.previous_line_cell
-        )
+        # =========================================================
+        # Cell tracking (1 ou 2 sensores)
+        # =========================================================
 
-        if sensors_on_line >= 1 and not line_revisited:
+        line_revisited = False
 
-            self.line_recent_positions[position_cell] = True
+        if on_line:
 
-            if len(self.line_recent_positions) > LINE_BUFFER_SIZE: # dar pop a pos mais antiga
-                self.line_recent_positions.popitem(last=False)
+            entered_new_cell = (
+                    position_cell != self.previous_track_cell
+            )
 
-        if sensors_on_line == 2: #contar distancia so com os dois sensores
+            if entered_new_cell:
+
+                line_revisited = (
+                        position_cell in self.line_recent_positions
+                )
+
+                if line_revisited:
+                    self.line_cells_revisited += 1
+
+                else:
+                    self.line_cells_visited += 1
+
+                    self.line_recent_positions[position_cell] = True
+
+                    if len(self.line_recent_positions) > LINE_BUFFER_SIZE:
+                        self.line_recent_positions.popitem(last=False)
+
+                self.previous_track_cell = position_cell
+
+        else:
+            self.previous_track_cell = None
+
+        # =========================================================
+        # Distance tracking (apenas 2 sensores)
+        # =========================================================
+
+        if fully_on_line:
+
             self.total_distance += step_distance
             self.time_on_line += 1
-            if position_cell == self.previous_line_cell:
+
+            if position_cell == self.previous_distance_cell:
                 self.same_cell_steps += 1
             else:
                 self.same_cell_steps = 0
 
-            self.previous_line_cell = position_cell
+            self.previous_distance_cell = position_cell
+
         else:
-            # self.time_on_line = 0 # se quisermos tempo consecutivo nao total, descomentar
+
             self.same_cell_steps = 0
-            self.previous_line_cell = None
+            self.previous_distance_cell = None
 
         self.prev_position = current_position
         self.__n += 1
@@ -1047,6 +1093,17 @@ class Evolution:
                 for r in results
             ]
 
+            visited_counts = [
+                r["line_cells_visited"]
+                for r in results
+            ]
+
+            revisited_counts = [
+                r["line_cells_revisited"]
+                for r in results
+            ]
+
+
             best_index = int(np.argmax(fitnesses))
             best_fitness = float(fitnesses[best_index])
             best_distance = float(distances[best_index])
@@ -1054,6 +1111,8 @@ class Evolution:
             best_collision_count = int(collision_counts[best_index])
             best_time_on_line = int(time_on_line_values[best_index])
             best_obstacles = obstacles_data[best_index]
+            best_visited = visited_counts[best_index]
+            best_revisited = revisited_counts[best_index]
 
             avg_fitness = float(np.mean(fitnesses))
             avg_distance = float(np.mean(distances))
@@ -1088,7 +1147,8 @@ class Evolution:
                 f"Best Fitness = {best_fitness:.2f}, "
                 f"Avg Fitness = {avg_fitness:.2f}, "
                 f"Best Distance = {best_distance:.2f}, "
-                f"Avg Distance = {avg_distance:.2f}, "
+                f"Cells Visited = {best_visited:.2f}, "
+                f"Cells Revisited = {best_revisited:.2f}, "
                 f"Collisions = {best_collision_count}, "
                 f"Time On Line = {best_time_on_line}, "
                 f"Global Best = {self.best_global_fitness:.2f}"
@@ -1163,9 +1223,6 @@ class Evolution:
         ground_sensor_left = sensors["ground_left"]
         ground_sensor_right = sensors["ground_right"]
 
-        ground_left_raw = sensors["ground_left_raw"]
-        ground_right_raw = sensors["ground_right_raw"]
-
         sensors_on_line = (
                 int(not ground_sensor_left)
                 +
@@ -1193,8 +1250,9 @@ class Evolution:
                 fitness -= penalty
                 self.debug_revisit_penalty += penalty
             else:
-                fitness += step_distance * 50
-                fitness -= abs(ground_left_raw - ground_right_raw) / 1023.0
+                fitness += step_distance * 20
+
+            fitness -= 0.2
 
         else:
             fitness -= 0.5
@@ -1297,26 +1355,50 @@ class Evolution:
                     current_position[1],
                 ])
 
+            total_line_events = (
+                    self.line_cells_visited
+                    +
+                    self.line_cells_revisited
+            )
+
+            if total_line_events > 0:
+                revisit_ratio = (
+                        self.line_cells_revisited
+                        / total_line_events
+                )
+            else:
+                revisit_ratio = 0.0
+
+            revisit_ratio_penalty = (revisit_ratio * self.line_cells_revisited * 2)
+            run_fitness -= revisit_ratio_penalty
+
             total_fitness += run_fitness
             total_distance += self.total_distance
             total_collision_count += self.collision_count
             total_time_on_line += self.time_on_line
 
-            print(
-                f"Fitness={run_fitness:.1f} | "
-                f"DistReward={self.debug_distance_reward:.1f} | "
-                f"RevisitPenalty={self.debug_revisit_penalty:.1f} | "
-                f"OffLinePenalty={self.debug_off_line_penalty:.1f} | "
-                f"CollisionPenalty={self.debug_collision_penalty:.1f} | "
-                f"LostLinePenalty={self.debug_lost_line_penalty:.1f} | "
-                f"Distance={self.total_distance:.2f} | "
-                f"TimeOnLine={self.time_on_line}"
-            )
+            if DEBUG_INDIVIDUALS:
+                print(
+                    f"Fitness={run_fitness:.1f} | "
+                    f"DistReward={self.debug_distance_reward:.1f} | "
+                    f"Visited={self.line_cells_visited} | "
+                    f"Revisited={self.line_cells_revisited} | "
+                    f"RevisitRatio={revisit_ratio:.2f} | "
+                    f"RevisitPenalty={self.debug_revisit_penalty:.1f} | "
+                    f"OffLinePenalty={self.debug_off_line_penalty:.1f} | "
+                    f"CollisionPenalty={self.debug_collision_penalty:.1f} | "
+                    f"LostLinePenalty={self.debug_lost_line_penalty:.1f} | "
+                    f"Distance={self.total_distance:.2f} | "
+                    f"TimeOnLine={self.time_on_line}"
+                )
 
             if run_fitness > best_run_fitness:
                 best_run_fitness = run_fitness
                 best_trajectory = trajectory
                 best_obstacles = scenario["obstacles"]
+
+                best_line_cells_visited = self.line_cells_visited
+                best_line_cells_revisited = self.line_cells_revisited
 
         return {
             "fitness": (
@@ -1341,6 +1423,8 @@ class Evolution:
                     total_time_on_line
                     / EVALUATION_RUNS
             ),
+            "line_cells_visited": best_line_cells_visited,
+            "line_cells_revisited": best_line_cells_revisited,
         }
 
     # ------------------------------------------------------------
