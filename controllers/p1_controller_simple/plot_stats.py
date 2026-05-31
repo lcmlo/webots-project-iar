@@ -6,12 +6,14 @@ from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
 
-#MODE = "latest"
-# MODE = "specific"
-MODE = "compare_recent"
+MODE = "single_controller"
+#MODE = "compare_latest_runs"
 
-TEST_CONTROLLER_NAME = None
+#caso nao seja o mais recente e quiserem especificar
+TEST_CONTROLLER_NAME = "AdvancedANNController"
+# se none vai buscar o mais recente
 TEST_TIMESTAMP = None
+# TEST_TIMESTAMP = "20260530_143914"
 
 COMPARE_LAST_N = 3
 
@@ -854,7 +856,7 @@ def addObstacles(ax, obstacles):
 
 def main():
 
-    if MODE == "latest":
+    if MODE == "single_controller":
 
         stats_file = (
             get_latest_stats_file()
@@ -897,7 +899,7 @@ def main():
             plot_folder,
         )
 
-    elif MODE == "compare_recent":
+    elif MODE == "compare_latest_runs":
 
         compare_recent_experiments()
 
