@@ -58,27 +58,25 @@ MIN_IMPROVEMENT_PERCENT = 0.005
 
 #para validar melhor a fitness enquanto treina, metricas por individuo e nao so por geracao
 DEBUG_INDIVIDUALS = False
-#MODE = "train"
+MODE = "train"
+
+CONTINUE_TRAINING = True
+
+# se NONE usa o mais recente desse CONTROLLER_CLASS
+# o timestamp vai buscar esse especifico desse CONTROLLER_CLASS
+#CONTROLLER_TIMESTAMP = None
+CONTROLLER_TIMESTAMP = "20260530_143914"
 
 # ============================================================
 # TESTS
 # ============================================================
-MODE = "test"
+#MODE = "test"
 
 #MODE = "test_generation" # testar o melhor de uma geracao especifica do ultimo controlador testado
 GENERATION_TO_TEST = 47 # so usado se MODE = "test_generation"
 
 #Para as metricas dos testes, esta em metros
 SUCCESS_DISTANCE = 2.0
-
-# se ambos forem none usa o mais recente para os modes de test
-# se so o nome vai buscar o mais recente desse controller
-# so o timestamp vai buscar esse especifico
-#TEST_CONTROLLER_NAME = None
-TEST_TIMESTAMP = None
-TEST_CONTROLLER_NAME = "BraitenbergController"
-#TEST_TIMESTAMP = "20260528_123722"
-
 # ============================================================
 # Utility functions
 # ============================================================
@@ -1274,7 +1272,7 @@ class Evolution:
         # Penalizar marcha atras prolongada
         # =========================================================
 
-        if self.reverse_steps > 15:
+        if self.reverse_steps > 40:
             fitness -= 0.5
 
         # =========================================================
@@ -1294,9 +1292,38 @@ class Evolution:
 
     def create_population(self):
         population = []
-        while len(population) < POPULATION_SIZE:
-            genome = np.random.uniform(-RANGE, RANGE, self.genome_size)
-            population.append(genome)
+
+        #usa o melhor individuo do ultimo ou do timestamp fornecido, do respetivo controller claro
+        if CONTINUE_TRAINING:
+
+            seed_genome = np.array(load_controller_genome(
+                self.controller_class,
+                CONTROLLER_TIMESTAMP,
+            )[0]["genome"], dtype=float)
+
+            # preservar o individuo original
+            population.append(seed_genome.copy())
+
+            while len(population) < POPULATION_SIZE:
+                mutated = seed_genome.copy()
+
+                #gerar um vetor com os indices a serem mutados,
+                # cerca de 50% serao selecionados
+                mutation_mask = np.random.rand(self.genome_size) < 0.5
+
+                # gerar um valor aleatorio para somar a cada gene selecionado,
+                # usando uma distribuicao normal com media 0 e
+                # desvio padrao MUTATION_SIZE * 2
+                mutated[mutation_mask] += np.random.normal(
+                    0, MUTATION_SIZE * 2, np.sum(mutation_mask)
+                )
+
+                population.append(mutated)
+
+        else: #iniciar do zero
+            while len(population) < POPULATION_SIZE:
+                genome = np.random.uniform(-RANGE, RANGE, self.genome_size)
+                population.append(genome)
         return population
 
     # ------------------------------------------------------------
@@ -1627,70 +1654,158 @@ class Evolution:
 
 
 # ============================================================
-# Test best individual
+# File helpers
 # ============================================================
 
-def test_best_individual(controller_class):
-    folder = "results/best_individuals"
+def find_best_individual_file(
+        controller_class,
+        timestamp=None,
+):
+    controller_name = (
+        controller_class.__name__
+    )
 
-    matching_files = []
+    matching_files = [
+        f
+        for f in os.listdir(
+            "results/best_individuals"
+        )
+        if controller_name in f
+    ]
 
-    for f in os.listdir(folder):
-
-        if not f.endswith(".json"):
-            continue
-
-        if TEST_CONTROLLER_NAME is not None:
-
-            if TEST_CONTROLLER_NAME not in f:
-                continue
-
-        if TEST_TIMESTAMP is not None:
-
-            if TEST_TIMESTAMP not in f:
-                continue
-
-        matching_files.append(f)
+    if timestamp is not None:
+        matching_files = [
+            f
+            for f in matching_files
+            if timestamp in f
+        ]
 
     if not matching_files:
         raise FileNotFoundError(
-            f"No saved individuals found for "
-            f"{controller_class.__name__}"
+            f"No saved individual found for "
+            f"{controller_name}"
+            +
+            (
+                f" with timestamp {timestamp}"
+                if timestamp
+                else ""
+            )
         )
 
-    latest_file = max(
-        matching_files,
-        key=lambda f: os.path.getmtime(
-            os.path.join(folder, f)
+    return os.path.join(
+        "results/best_individuals",
+        max(
+            matching_files,
+            key=lambda f: os.path.getmtime(
+                os.path.join(
+                    "results/best_individuals",
+                    f
+                )
+            )
         )
     )
 
-    filepath = os.path.join(folder, latest_file)
+def load_controller_genome(
+        controller_class,
+        timestamp=None,
+):
+    file_path = find_best_individual_file(
+        controller_class,
+        timestamp,
+    )
 
-    with open(filepath, "r") as f:
-        best_individual = json.load(f)
+    with open(
+            file_path,
+            "r",
+            encoding="utf-8"
+    ) as f:
+        data = json.load(f)
+
+    return data, file_path
+
+def find_training_stats_file(
+        controller_class,
+        timestamp=None,
+):
+    controller_name = (
+        controller_class.__name__
+    )
+
+    matching_files = [
+        f
+        for f in Path(
+            "results/training_stats"
+        ).glob("*.json")
+        if controller_name in f.name
+    ]
+
+    if timestamp is not None:
+        matching_files = [
+            f
+            for f in matching_files
+            if timestamp in f.name
+        ]
+
+    if not matching_files:
+        raise FileNotFoundError(
+            f"No training stats found for "
+            f"{controller_name}"
+        )
+
+    return max(
+        matching_files,
+        key=lambda f: f.stat().st_mtime
+    )
+
+# ============================================================
+# Test best individual
+# ============================================================
+
+def test_best_individual(
+        controller_class,
+):
+    data, file_path = (
+        load_controller_genome(
+            controller_class,
+            CONTROLLER_TIMESTAMP,
+        )
+    )
 
     genome = np.array(
-        best_individual["genome"],
+        data["genome"],
         dtype=float
     )
 
-    fitness = best_individual["fitness"]
+    fitness = data["fitness"]
 
-    print(f"\nTesting latest best individual")
-    print(f"File: {latest_file}")
-    print(f"Controller: {controller_class.__name__}")
-    print(f"Fitness: {fitness:.2f}")
+    print("\nTesting best individual")
+    print(
+        f"File: "
+        f"{os.path.basename(file_path)}"
+    )
+    print(
+        f"Controller: "
+        f"{controller_class.__name__}"
+    )
+    print(
+        f"Fitness: "
+        f"{fitness:.2f}"
+    )
 
-    evolution = Evolution(controller_class)
+    evolution = Evolution(
+        controller_class
+    )
 
-    evolution.reset(new_spawn=True)
+    evolution.reset(
+        new_spawn=True
+    )
+
     evolution.remove_obstacles()
     evolution.generate_obstacles()
 
     evolution.evaluate_genome_benchmark(
         genome,
-        episodes=30
+        episodes=30,
     )
 
 
@@ -1702,83 +1817,64 @@ def test_generation(
         controller_class,
         generation,
 ):
-    # =========================================================
-    # Carrega o ficheiro mais recente do controlador
-    # =========================================================
-
-    folder = Path("results/training_stats")
-
-    matching_files = []
-
-    for f in folder.glob("*.json"):
-
-        filename = f.name
-
-        if TEST_CONTROLLER_NAME is not None:
-
-            if TEST_CONTROLLER_NAME not in filename:
-                continue
-
-        if TEST_TIMESTAMP is not None:
-
-            if TEST_TIMESTAMP not in filename:
-                continue
-
-        matching_files.append(f)
-
-    if not matching_files:
-        raise FileNotFoundError(
-            f"No training stats found for "
-            f"{controller_class.__name__}"
+    stats_file = (
+        find_training_stats_file(
+            controller_class,
+            CONTROLLER_TIMESTAMP,
         )
-
-    latest_file = max(
-        matching_files,
-        key=lambda f: f.stat().st_mtime
     )
 
-    with open(latest_file, "r") as f:
+    with open(
+            stats_file,
+            "r",
+            encoding="utf-8"
+    ) as f:
         data = json.load(f)
 
-    stats = data["stats"]
+    generation_data = next(
+        (
+            g
+            for g in data["stats"]
+            if g["generation"] == generation
+        ),
+        None
+    )
 
-    # =========================================================
-    # Procurar geração pretendida
-    # =========================================================
-
-    matching_generation = None
-
-    for generation_data in stats:
-
-        if generation_data["generation"] == generation:
-            matching_generation = generation_data
-            break
-
-    if matching_generation is None:
+    if generation_data is None:
         raise ValueError(
-            f"Generation {generation} not found."
+            f"Generation {generation} "
+            f"not found."
         )
 
     genome = np.array(
-        matching_generation["best_genome"],
+        generation_data["best_genome"],
         dtype=float
     )
 
-    fitness = matching_generation["best_fitness"]
+    print(
+        f"\nTesting generation "
+        f"{generation}"
+    )
 
-    print(f"\nTesting generation {generation}")
-    print(f"Fitness: {fitness:.2f}")
+    print(
+        f"Fitness: "
+        f"{generation_data['best_fitness']:.2f}"
+    )
 
-    evolution = Evolution(controller_class)
+    evolution = Evolution(
+        controller_class
+    )
 
-    evolution.reset(new_spawn=True)
+    evolution.reset(
+        new_spawn=True
+    )
 
     evolution.remove_obstacles()
     evolution.generate_obstacles()
 
     evolution.evaluate_genome_benchmark(
         genome,
-        episodes=30
+        episodes=30,
     )
 
 

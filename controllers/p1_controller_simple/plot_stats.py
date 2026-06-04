@@ -6,11 +6,11 @@ from matplotlib.patches import Rectangle
 import matplotlib.pyplot as plt
 import numpy as np
 
-MODE = "single_controller"
-#MODE = "compare_latest_runs"
+#MODE = "single_controller"
+MODE = "compare_latest_runs"
 
 #caso nao seja o mais recente e quiserem especificar
-TEST_CONTROLLER_NAME = "AdvancedANNController"
+TEST_CONTROLLER_NAME = None
 # se none vai buscar o mais recente
 TEST_TIMESTAMP = None
 # TEST_TIMESTAMP = "20260530_143914"
@@ -430,8 +430,7 @@ def plot_fitness(stats, config,timestamp, plot_folder):
     plt.ylabel("Fitness")
 
     plt.title(
-        f"{config['controller']}_{timestamp} Fitness Convergence "
-        f"{timestamp}"
+        f"{config['controller']}_{timestamp}\nFitness Convergence "
     )
 
     plt.legend()
