@@ -40,7 +40,6 @@ MAX_SPEED = 9.53
 LINE_BUFFER_SIZE = 300 # 6m de celulas
 CELL_SIZE = 0.02
 
-
 CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
 #CONTROLLER_CLASS = AdvancedANNController
@@ -57,15 +56,15 @@ STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT_PERCENT = 0.005
 
 #para validar melhor a fitness enquanto treina, metricas por individuo e nao so por geracao
-DEBUG_INDIVIDUALS = False
+DEBUG_INDIVIDUALS = True
 MODE = "train"
 
-CONTINUE_TRAINING = True
+CONTINUE_TRAINING = False
 
 # se NONE usa o mais recente desse CONTROLLER_CLASS
 # o timestamp vai buscar esse especifico desse CONTROLLER_CLASS
-#CONTROLLER_TIMESTAMP = None
-CONTROLLER_TIMESTAMP = "20260530_143914"
+CONTROLLER_TIMESTAMP = None
+#CONTROLLER_TIMESTAMP = "20260604_190737"
 
 # ============================================================
 # TESTS
@@ -73,9 +72,9 @@ CONTROLLER_TIMESTAMP = "20260530_143914"
 #MODE = "test"
 
 #MODE = "test_generation" # testar o melhor de uma geracao especifica do ultimo controlador testado
-GENERATION_TO_TEST = 47 # so usado se MODE = "test_generation"
+GENERATION_TO_TEST = 49 # so usado se MODE = "test_generation"
 
-#Para as metricas dos testes, esta em metros
+#Para as metricas dos testes, esta em metros #TODO maybe meter n max de colisoes
 SUCCESS_DISTANCE = 2.0
 # ============================================================
 # Utility functions
@@ -207,7 +206,8 @@ class Evolution:
             sensor.enable(self.timestep)
 
         self.__n = 0
-        self.total_distance = 0.0
+        self.total_distance = 0.0 #com ambos na linha
+        self.distance_any_sensor = 0.0
         self.prev_position = self.robot_node.getPosition()
         self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.spawn_rng = np.random.default_rng(SEED)
@@ -261,16 +261,21 @@ class Evolution:
                 self.runStep(controller)
 
             results.append({
-                "distance": self.total_distance,
+                "distance with 2 sensors": self.total_distance,
+                "distance with 1-2 sensors": self.distance_any_sensor,
                 "collisions": self.collision_count,
                 "time_on_line": self.time_on_line,
             })
 
-        distances = [
-            r["distance"]
+        distances_2_sensors = [
+            r["distance with 2 sensors"]
             for r in results
         ]
-        distances_sorted = sorted(distances)
+
+        distances_any_sensor = [
+            r["distance with 1-2 sensors"]
+            for r in results
+        ]
 
         collisions = [
             r["collisions"]
@@ -279,7 +284,7 @@ class Evolution:
 
         successful_runs = sum(
             d >= SUCCESS_DISTANCE
-            for d in distances
+            for d in distances_2_sensors
         )
 
         success_rate = (
@@ -291,24 +296,49 @@ class Evolution:
         print(f"Episodes: {episodes}")
 
         print(
-            f"Distance Avg: {np.mean(distances):.2f}"
+            f"Avg Distance (2 sensors): "
+            f"{np.mean(distances_2_sensors):.2f}"
         )
 
         print(
             f"Median Distance: "
-            f"{np.median(distances):.2f}"
+            f"{np.median(distances_2_sensors):.2f}"
         )
 
         print(
-            f"Distance Std: {np.std(distances):.2f}"
+            f"Distance Std: {np.std(distances_2_sensors):.2f}"
         )
 
         print(
-            f"Distance Max: {np.max(distances):.2f}"
+            f"Distance Max: {np.max(distances_2_sensors):.2f}"
         )
 
         print(
-            f"Distance Min: {np.min(distances):.2f}"
+            f"Distance Min: {np.min(distances_2_sensors):.2f}"
+        )
+
+        print(
+            f"Avg Distance (>=1 sensor): "
+            f"{np.mean(distances_any_sensor):.2f}"
+        )
+        print(
+            f"Median Distance (>=1 sensor): "
+            f"{np.median(distances_any_sensor):.2f}"
+        )
+
+        print(
+            f"Distance Std (>=1 sensor): "
+            f"{np.std(distances_any_sensor):.2f}"
+        )
+
+        print(
+            f"Distance Max (>=1 sensor): "
+            f"{np.max(distances_any_sensor):.2f}"
+        )
+
+        print(
+            f"Distance Min (>=1 sensor): "
+            f"{np.min(distances_any_sensor):.2f}"
         )
 
         print(
@@ -887,6 +917,7 @@ class Evolution:
         self.time_on_line = 0
         self.__n = 0
         self.total_distance = 0.0
+        self.distance_any_sensor = 0.0
         self.same_cell_steps = 0
         self.previous_track_cell = None
         self.previous_distance_cell = None
@@ -1002,7 +1033,7 @@ class Evolution:
         line_revisited = False
 
         if on_line:
-
+            self.distance_any_sensor += step_distance
             entered_new_cell = (
                     position_cell != self.previous_track_cell
             )
@@ -1078,6 +1109,7 @@ class Evolution:
 
             fitnesses = np.array([r["fitness"] for r in results], dtype=float)
             distances = np.array([r["distance"] for r in results], dtype=float)
+            distances_any_sensor = np.array([r["distance_any_sensor"] for r in results],dtype=float)
             trajectories = [r["trajectory"] for r in results]
             obstacles_data = [r["obstacles"] for r in results]
 
@@ -1105,6 +1137,7 @@ class Evolution:
             best_index = int(np.argmax(fitnesses))
             best_fitness = float(fitnesses[best_index])
             best_distance = float(distances[best_index])
+            best_distance_any_sensor = float(distances_any_sensor[best_index])
             best_trajectory = trajectories[best_index]
             best_collision_count = int(collision_counts[best_index])
             best_time_on_line = int(time_on_line_values[best_index])
@@ -1114,6 +1147,7 @@ class Evolution:
 
             avg_fitness = float(np.mean(fitnesses))
             avg_distance = float(np.mean(distances))
+            avg_distance_any_sensor = float(np.mean(distances_any_sensor))
 
             best_genome = population[best_index]
 
@@ -1136,15 +1170,17 @@ class Evolution:
                     self.best_global_fitness,
                     generation,
                     best_distance,
+                    best_distance_any_sensor
                 )
 
             self.remove_obstacles()
 
             print(
                 f"Generation {generation}: "
-                f"Best Fitness = {best_fitness:.2f}, "
+                f"Best's Fitness = {best_fitness:.2f}, "
                 f"Avg Fitness = {avg_fitness:.2f}, "
-                f"Best Distance = {best_distance:.2f}, "
+                f"Best's Distance with two sensors = {best_distance:.2f}, "
+                f"Best's Distance Any Sensor = {best_distance_any_sensor:.2f}, "
                 f"Cells Visited = {best_visited:.2f}, "
                 f"Cells Revisited = {best_revisited:.2f}, "
                 f"Collisions = {best_collision_count}, "
@@ -1158,6 +1194,8 @@ class Evolution:
                 "avg_fitness": avg_fitness,
                 "best_distance": best_distance,
                 "avg_distance": avg_distance,
+                "best_distance_any_sensor": best_distance_any_sensor,
+                "avg_distance_any_sensor": avg_distance_any_sensor,
                 "global_best_fitness": float(self.best_global_fitness),
                 "best_genome": best_genome.tolist(),
                 "best_trajectory": best_trajectory,
@@ -1272,7 +1310,7 @@ class Evolution:
         # Penalizar marcha atras prolongada
         # =========================================================
 
-        if self.reverse_steps > 40:
+        if self.reverse_steps > 40: # TODO na melhor run estava a 15, se nao melhorar reverter para reprodutibilidade
             fitness -= 0.5
 
         # =========================================================
@@ -1340,6 +1378,7 @@ class Evolution:
         total_distance = 0.0
         total_collision_count = 0
         total_time_on_line = 0
+        total_distance_any_sensor = 0.0
 
         for scenario in self.generation_scenarios:
 
@@ -1403,6 +1442,7 @@ class Evolution:
             total_distance += self.total_distance
             total_collision_count += self.collision_count
             total_time_on_line += self.time_on_line
+            total_distance_any_sensor += self.distance_any_sensor
 
             if DEBUG_INDIVIDUALS:
                 print(
@@ -1415,7 +1455,8 @@ class Evolution:
                     f"OffLinePenalty={self.debug_off_line_penalty:.1f} | "
                     f"CollisionPenalty={self.debug_collision_penalty:.1f} | "
                     f"LostLinePenalty={self.debug_lost_line_penalty:.1f} | "
-                    f"Distance={self.total_distance:.2f} | "
+                    f"Distance 2 sensors={self.total_distance:.2f} | "
+                    f"Distance Any Sensor={self.distance_any_sensor:.2f} | "
                     f"TimeOnLine={self.time_on_line}"
                 )
 
@@ -1435,6 +1476,11 @@ class Evolution:
 
             "distance": (
                     total_distance
+                    / EVALUATION_RUNS
+            ),
+
+            "distance_any_sensor": (
+                    total_distance_any_sensor
                     / EVALUATION_RUNS
             ),
 
@@ -1622,7 +1668,7 @@ class Evolution:
     # Save best individual
     # ------------------------------------------------------------
 
-    def save_best_individual(self, genome, fitness, generation, distance):
+    def save_best_individual(self, genome, fitness, generation, distance, distance_any_sensor):
 
         best_individual = {
             "controller": self.controller_class.__name__,
@@ -1631,6 +1677,7 @@ class Evolution:
             "fitness": float(fitness),
             "generation": int(generation),
             "distance": float(distance),
+            "distance_any_sensor": float(distance_any_sensor),
             "timestamp": self.timestamp,
         }
 
