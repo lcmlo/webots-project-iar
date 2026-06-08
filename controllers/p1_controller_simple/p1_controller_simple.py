@@ -40,9 +40,9 @@ MAX_SPEED = 9.53
 LINE_BUFFER_SIZE = 300 # 6m de celulas
 CELL_SIZE = 0.02
 
-CONTROLLER_CLASS = BraitenbergController
+#CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-#CONTROLLER_CLASS = AdvancedANNController
+CONTROLLER_CLASS = AdvancedANNController
 
 # para reproduzir exatamente as condicoes de treino
 # usar o numero da seed do treino
@@ -55,27 +55,33 @@ EARLY_STOPPING = True
 STAGNATION_LIMIT = 10
 MIN_IMPROVEMENT_PERCENT = 0.005
 
-#para validar melhor a fitness enquanto treina, metricas por individuo e nao so por geracao
-DEBUG_INDIVIDUALS = True
-MODE = "train"
+#para validar melhor a fitness enquanto treina,
+# fornece metricas por individuo e nao so por geracao
+DEBUG_INDIVIDUALS = False
+#MODE = "train"
 
+# continuar a treinar o melhor genoma
 CONTINUE_TRAINING = False
 
 # se NONE usa o mais recente desse CONTROLLER_CLASS
 # o timestamp vai buscar esse especifico desse CONTROLLER_CLASS
-CONTROLLER_TIMESTAMP = None
-#CONTROLLER_TIMESTAMP = "20260604_190737"
+#CONTROLLER_TIMESTAMP = None
+CONTROLLER_TIMESTAMP = "20260530_143957"
 
 # ============================================================
 # TESTS
+# para testar o melhor individuo do controlador mais recente
+# de um determinado timestamp, basta escolher a CONTROLLER_CLASS
+# para um especifico, usar tambem CONTROLLER_TIMESTAMP
 # ============================================================
-#MODE = "test"
+MODE = "test"
 
-#MODE = "test_generation" # testar o melhor de uma geracao especifica do ultimo controlador testado
+#MODE = "test_generation" # uma geracao especifica
 GENERATION_TO_TEST = 49 # so usado se MODE = "test_generation"
 
-#Para as metricas dos testes, esta em metros #TODO maybe meter n max de colisoes
+#Para as metricas dos testes, esta em metros
 SUCCESS_DISTANCE = 2.0
+MAX_COLLISIONS = 5
 # ============================================================
 # Utility functions
 # ============================================================
@@ -292,6 +298,16 @@ class Evolution:
                                / episodes
                        ) * 100
 
+        max_collisions_runs = sum(
+            c <= MAX_COLLISIONS
+            for c in collisions
+        )
+
+        max_collisions_rate = (
+                                      max_collisions_runs
+                                      / episodes
+                              ) * 100
+
         print("\n========== BENCHMARK ==========")
         print(f"Episodes: {episodes}")
 
@@ -346,6 +362,14 @@ class Evolution:
         )
 
         print(
+            f"Collisions Max: {np.max(collisions)}"
+        )
+
+        print(
+            f"Collisions Min: {np.min(collisions)}"
+        )
+
+        print(
             f"Successful Runs: "
             f"{successful_runs}/{episodes}"
         )
@@ -353,6 +377,17 @@ class Evolution:
         print(
             f"Success Rate (>={SUCCESS_DISTANCE}m): "
             f"{success_rate:.1f}%"
+        )
+
+        print(
+            f"Runs <= {MAX_COLLISIONS} collisions: "
+            f"{max_collisions_runs}/{episodes}"
+        )
+
+        print(
+            f"Collision Success Rate "
+            f"(<= {MAX_COLLISIONS}): "
+            f"{max_collisions_rate:.1f}%"
         )
 
 
@@ -1310,7 +1345,7 @@ class Evolution:
         # Penalizar marcha atras prolongada
         # =========================================================
 
-        if self.reverse_steps > 40: # TODO na melhor run estava a 15, se nao melhorar reverter para reprodutibilidade
+        if self.reverse_steps > 15:
             fitness -= 0.5
 
         # =========================================================
