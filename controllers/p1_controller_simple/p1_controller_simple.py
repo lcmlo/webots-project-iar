@@ -40,9 +40,9 @@ MAX_SPEED = 9.53
 LINE_BUFFER_SIZE = 300 # 6m de celulas
 CELL_SIZE = 0.02
 
-#CONTROLLER_CLASS = BraitenbergController
+CONTROLLER_CLASS = BraitenbergController
 #CONTROLLER_CLASS = SimpleANNController
-CONTROLLER_CLASS = AdvancedANNController
+#CONTROLLER_CLASS = AdvancedANNController
 
 # para reproduzir exatamente as condicoes de treino
 # usar o numero da seed do treino
@@ -66,7 +66,7 @@ CONTINUE_TRAINING = False
 # se NONE usa o mais recente desse CONTROLLER_CLASS
 # o timestamp vai buscar esse especifico desse CONTROLLER_CLASS
 #CONTROLLER_TIMESTAMP = None
-CONTROLLER_TIMESTAMP = "20260530_143957"
+CONTROLLER_TIMESTAMP = "20260530_143914"
 
 # ============================================================
 # TESTS
@@ -75,6 +75,7 @@ CONTROLLER_TIMESTAMP = "20260530_143957"
 # para um especifico, usar tambem CONTROLLER_TIMESTAMP
 # ============================================================
 MODE = "test"
+BENCHMARK_EPISODES = 300
 
 #MODE = "test_generation" # uma geracao especifica
 GENERATION_TO_TEST = 49 # so usado se MODE = "test_generation"
@@ -245,11 +246,10 @@ class Evolution:
     def evaluate_genome_benchmark(
             self,
             genome,
-            episodes=30,
     ):
         results = []
 
-        for episode in range(episodes):
+        for episode in range(BENCHMARK_EPISODES):
 
             self.reset(new_spawn=True)
 
@@ -295,7 +295,7 @@ class Evolution:
 
         success_rate = (
                                successful_runs
-                               / episodes
+                               / BENCHMARK_EPISODES
                        ) * 100
 
         max_collisions_runs = sum(
@@ -305,11 +305,11 @@ class Evolution:
 
         max_collisions_rate = (
                                       max_collisions_runs
-                                      / episodes
+                                      / BENCHMARK_EPISODES
                               ) * 100
 
         print("\n========== BENCHMARK ==========")
-        print(f"Episodes: {episodes}")
+        print(f"Episodes: {BENCHMARK_EPISODES}")
 
         print(
             f"Avg Distance (2 sensors): "
@@ -371,7 +371,7 @@ class Evolution:
 
         print(
             f"Successful Runs: "
-            f"{successful_runs}/{episodes}"
+            f"{successful_runs}/{BENCHMARK_EPISODES}"
         )
 
         print(
@@ -381,7 +381,7 @@ class Evolution:
 
         print(
             f"Runs <= {MAX_COLLISIONS} collisions: "
-            f"{max_collisions_runs}/{episodes}"
+            f"{max_collisions_runs}/{BENCHMARK_EPISODES}"
         )
 
         print(
@@ -1884,11 +1884,7 @@ def test_best_individual(
 
     evolution.remove_obstacles()
     evolution.generate_obstacles()
-
-    evolution.evaluate_genome_benchmark(
-        genome,
-        episodes=30,
-    )
+    evolution.evaluate_genome_benchmark(genome)
 
 
 # ============================================================
@@ -1953,11 +1949,7 @@ def test_generation(
 
     evolution.remove_obstacles()
     evolution.generate_obstacles()
-
-    evolution.evaluate_genome_benchmark(
-        genome,
-        episodes=30,
-    )
+    evolution.evaluate_genome_benchmark(genome)
 
 
 # ============================================================
